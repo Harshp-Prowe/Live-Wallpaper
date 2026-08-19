@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose drives the real theme; this only styles the launch window. -->
+    <style name="Theme.DualByHarsh" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

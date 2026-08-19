@@ -1,0 +1,7 @@
+// Top-level build file. Plugin versions are declared here and applied per-module.
+// Kotlin 1.9.x uses the Compose compiler extension (composeOptions in :app),
+// not the standalone Compose Gradle plugin (that is Kotlin 2.0+).
+plugins {
+    id("com.android.application") version "8.5.2" apply false
+    id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+}
