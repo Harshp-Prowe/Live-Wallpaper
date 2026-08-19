@@ -82,7 +82,10 @@ class WorkProfileEngine(context: Context) : VirtualizationEngine {
         else {
             val report = CloneBridge.lastReport
             val base = "The clone did not appear."
-            EngineResult.Failure(if (report != null) "$base [$report]" else "$base The work-profile agent did not respond — reopen after the space finishes setting up.")
+            EngineResult.Failure(
+                if (report != null) "$base [$report]"
+                else "$base Your private space is running an OLDER version of the helper. Fix: delete the work profile in Settings, then Create Space again with the latest app installed.",
+            )
         }
     }
 
