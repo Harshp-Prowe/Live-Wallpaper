@@ -32,8 +32,12 @@ object WorkAgent {
         val dpm = activity.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         val admin = DualAdminReceiver.componentName(activity)
 
-        val parent = runCatching { dpm.getBindDeviceAdminTargetUsers(admin).firstOrNull() }.getOrNull()
-        if (parent == null) { activity.finish(); return }
+        val targets = runCatching { dpm.getBindDeviceAdminTargetUsers(admin) }.getOrNull()
+        val parent = targets?.firstOrNull()
+        if (parent == null) {
+            showDiag(activity, "Dual agent diagnostic\n\nStep: find personal profile to bind to\nResult: FAILED — bind targets = ${targets?.size ?: "error"}\n\nThis is the failing step. Screenshot this and send it.")
+            return
+        }
 
         var connection: ServiceConnection? = null
         var remote: Messenger? = null
@@ -81,14 +85,28 @@ object WorkAgent {
             )
         }.getOrDefault(false)
 
-        if (!bound) activity.finish()
-        // Safety net: never hang the invisible agent open.
+        if (!bound) {
+            showDiag(activity, "Dual agent diagnostic\n\nStep: bind to personal profile service\nResult: FAILED — bindDeviceAdminServiceAsUser returned false\n\nThe bridge could not connect. Screenshot this and send it.")
+            return
+        }
+        // Safety net: if the bridge connects but never delivers tasks, show that.
         Handler(Looper.getMainLooper()).postDelayed({
             if (!activity.isFinishing) {
                 connection?.let { runCatching { activity.unbindService(it) } }
-                activity.finish()
+                showDiag(activity, "Dual agent diagnostic\n\nStep: receive tasks from personal profile\nResult: bound OK, but no tasks arrived within 15s\n\nScreenshot this and send it.")
             }
-        }, 20_000)
+        }, 15_000)
+    }
+
+    /** Shows a readable diagnostic in the work-profile agent so failures that
+     *  happen before we can phone home are still visible (no PC/logcat needed). */
+    private fun showDiag(activity: Activity, text: String) {
+        val tv = android.widget.TextView(activity).apply {
+            setText(text)
+            textSize = 16f
+            setPadding(48, 96, 48, 48)
+        }
+        activity.setContentView(tv)
     }
 
     private fun executeOp(
