@@ -40,7 +40,8 @@ class CloneForwardActivity : Activity() {
                 runCatching {
                     packageManager.packageInstaller.uninstall(
                         pkg, android.app.PendingIntent.getBroadcast(
-                            this, 0, android.content.Intent("com.harsh.dual.UNINSTALL_DONE"),
+                            this, 0,
+                            android.content.Intent("com.harsh.dual.UNINSTALL_DONE").setPackage(packageName),
                             android.app.PendingIntent.FLAG_UPDATE_CURRENT or
                                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S)
                                     android.app.PendingIntent.FLAG_MUTABLE else 0,
@@ -84,7 +85,8 @@ class CloneForwardActivity : Activity() {
                 }
             }
             val sender = android.app.PendingIntent.getBroadcast(
-                this, sessionId, android.content.Intent("com.harsh.dual.INSTALL_DONE"),
+                this, sessionId,
+                android.content.Intent("com.harsh.dual.INSTALL_DONE").setPackage(packageName),
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT or
                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S)
                         android.app.PendingIntent.FLAG_MUTABLE else 0,
