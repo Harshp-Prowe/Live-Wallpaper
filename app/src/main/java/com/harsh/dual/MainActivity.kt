@@ -52,6 +52,12 @@ import com.harsh.dual.viewmodel.DualViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // When launched inside the work profile, act as the invisible agent
+        // instead of showing UI: bind back to personal and run queued tasks.
+        if (com.harsh.dual.engine.WorkAgent.isAgent(this)) {
+            com.harsh.dual.engine.WorkAgent.run(this)
+            return
+        }
         setContent { DualRoot() }
     }
 }

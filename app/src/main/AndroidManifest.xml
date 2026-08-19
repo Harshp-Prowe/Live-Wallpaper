@@ -51,19 +51,12 @@
             </intent-filter>
         </receiver>
 
-        <!-- Invisible worker inside the work profile. The personal UI reaches it
-             through a forwarded cross-profile intent to install/remove/wipe. -->
-        <activity
-            android:name=".engine.AgentActivity"
-            android:excludeFromRecents="true"
+        <!-- Cross-profile bridge. The work-profile agent binds to this personal
+             service (via bindDeviceAdminServiceAsUser) to pull queued tasks. -->
+        <service
+            android:name=".engine.WorkBridgeService"
             android:exported="true"
-            android:noHistory="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar">
-            <intent-filter>
-                <action android:name="com.harsh.dual.action.AGENT" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
+            android:permission="android.permission.BIND_DEVICE_ADMIN" />
 
     </application>
 </manifest>
