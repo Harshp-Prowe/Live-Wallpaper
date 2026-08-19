@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.harsh.dual"
+    namespace = "com.harsh.motion"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.harsh.dual"
+        applicationId = "com.harsh.motion"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
@@ -19,8 +19,7 @@ android {
     buildTypes {
         release {
             // Debug-signed so the produced APK is directly installable without
-            // a signing keystore. R8/shrinking kept off to avoid stripping the
-            // DevicePolicy reflection paths without a curated keep-rules pass.
+            // a signing keystore.
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -42,14 +41,12 @@ android {
         compose = true
     }
     composeOptions {
-        // Compatible with Kotlin 1.9.24.
         kotlinCompilerExtensionVersion = "1.5.14"
     }
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     }
     lint {
-        // Don't fail the CI release build on lint findings.
         abortOnError = false
         checkReleaseBuilds = false
     }
@@ -73,7 +70,6 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.0")
 
     implementation("androidx.datastore:datastore-preferences:1.1.1")
-    implementation("androidx.biometric:biometric:1.1.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

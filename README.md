@@ -1,96 +1,73 @@
-# Dual by Harsh
+# Motion by Harsh
 
-A lightweight, no-root **second-space / app-cloning** Android app. Create an
-isolated private space on your phone, clone supported apps into it, and run them
-with **separate accounts and data** — without touching your original apps.
+Turn any photo into a living wallpaper — with gyroscope parallax, touch
+ripples, drifting particles, dynamic light, and floating motion. No root, no
+account, fully on-device.
 
-Built with **Kotlin + Jetpack Compose + Material 3**.
+Built with **Kotlin + Jetpack Compose + Material 3** on Android's official
+**Live Wallpaper** API.
 
 ---
 
-## How it works (honest version)
+## How it works
 
-On modern Android (10+), the old "run a clone inside a container" trick used by
-apps like Parallel Space / VirtualApp **no longer works without rooting the
-phone**. This app refuses to fake cloning, so it uses the one mechanism that is
-real, supported, and needs no root:
+1. Pick a photo from your gallery (no storage permission needed — uses
+   Android's Photo Picker).
+2. Turn on any combination of motion effects and preview them live, right in
+   the editor, using your phone's actual sensors and touch input.
+3. Tap **Save & set as wallpaper** — Android shows its own one-tap "Set
+   wallpaper" confirmation, then your photo is alive on your home/lock screen.
 
-> **Android's managed Work Profile** — the same approach as the open-source apps
-> *Island* and *Shelter*.
+### Effects
+| Effect | What it does |
+|---|---|
+| **Gyro Parallax** | Tilt your phone to shift depth — covers tilt, gyroscope, accelerometer motion, parallax layers, perspective shift |
+| **Floating Motion** | A gentle idle drift/breathing motion — covers floating, elastic, inertia, smooth follow, ambient animation |
+| **Touch Ripple** | Tap and drag ripple across the photo — covers touch reactive, press & hold, double tap, drag, swipe, zoom on touch |
+| **Particles** | Sparkles, hearts, or light orbs drifting and reacting to touch/tilt |
+| **Dynamic Light** | A soft light sweep and depth vignette that shifts with tilt |
+| **Shake Burst** | Shake your phone for a burst of particles |
 
-- Your clones live in a sealed, OS-managed space next to your normal phone.
-- Cloned apps appear in your app drawer with a small **briefcase badge**.
-- Your personal apps, settings, photos and accounts are **never modified**.
-- Removing the space deletes the clones cleanly — nothing else changes.
-
-### What you get
-```
-Install DualByHarsh.apk
-        ↓
-Open the app → tap "Create Space"  (one Android confirmation, no manual settings)
-        ↓
-Tap "Add App" → pick an installed app → it's cloned into the space
-        ↓
-Tap the clone to launch it → log in with a different account
-        ↓
-Original app + original account stay untouched
-```
+Multiple effects can be combined on one photo. Six **prebuilt templates** are
+included — three general-purpose (Cinematic Depth, Dreamy Float, Interactive
+Glow) and three **love-themed** (Heartbeat, Us Forever, Together Always) with
+heart particles.
 
 ---
 
 ## Get the APK without installing anything
 
-You do **not** need Android Studio, the SDK, or Java on your PC. GitHub builds
-the APK for you:
+No Android Studio, SDK, or Java needed on your PC — GitHub builds the APK:
 
-1. Push this project to GitHub (see below). The **Build APK** GitHub Action runs
-   automatically.
-2. When it finishes (green check under the **Actions** tab), download the APK:
-   - From the **Releases** page → `latest` → **DualByHarsh.apk** (direct download), or
-   - From the Actions run → **Artifacts** → `DualByHarsh-apk`.
-3. Copy `DualByHarsh.apk` to your phone and open it. Allow "install unknown
-   apps" when prompted, then install.
+1. Push this project to GitHub. The **Build APK** Action runs automatically.
+2. Download the finished APK from the repo's **Releases → latest →
+   `MotionByHarsh.apk`**, or from the Actions run's **Artifacts**.
+3. Copy it to your phone, open it, allow "install unknown apps" if prompted,
+   install.
 
----
-
-## Build locally (optional, only if you *want* the SDK)
-
+## Build locally (optional)
 ```
 gradle assembleRelease
 # → app/build/outputs/apk/release/app-release.apk
 ```
-
-Requires JDK 17 and the Android SDK (platform 34, build-tools 34). The APK is
-debug-signed so it installs directly.
+Requires JDK 17 and the Android SDK (platform 34, build-tools 34).
 
 ---
 
-## Supported Android versions & devices
+## Compatibility
 
-- **Android 8.0 (API 26) and newer.**
-- The device must allow a managed profile. Most standard phones do; a few
-  manufacturers disable it, in which case the app tells you clearly.
+- **Android 8.0 (API 26) and up** — same code path on every version through
+  the latest release; no version-specific branches needed for the core
+  features (Photo Picker, live wallpaper API, and the rotation-vector sensor
+  are all stable across this range).
+- Devices without a gyroscope still work — Gyro Parallax simply stays still;
+  every other effect (Floating, Touch, Particles, Dynamic Light) is
+  independent of that sensor.
 
-## Known limitations
-
-- Some apps (banking, UPI, DRM/streaming, hardware-key authenticators) detect
-  the work profile and refuse to run. This is by design and **cannot** be
-  bypassed safely — the app reports it instead of pretending.
-- Google Play Services features (push, Sign-In) may be limited inside the space.
-- Only one private space is supported (Android allows one managed profile).
-
-## What this app never does
-
-No root, no ADB, no system modification, no credential capture, no TLS/DRM/Play
-Integrity bypass. See [SECURITY.md](SECURITY.md).
-
----
-
-## Documentation
-- [ARCHITECTURE.md](ARCHITECTURE.md) — engine choice and design
-- [COMPATIBILITY.md](COMPATIBILITY.md) — per-app compatibility matrix
-- [SECURITY.md](SECURITY.md) — security posture
-- [PERFORMANCE.md](PERFORMANCE.md) — performance notes
+## Performance & battery
+See [PERFORMANCE.md](PERFORMANCE.md) — sensors and rendering run only while the
+wallpaper is actually visible, frame rate is capped, and photos are decoded at
+screen resolution rather than full camera resolution.
 
 ## License
-See project owner. Built for **Harsh** (harshp@prowesolution.com).
+Built for **Harsh** (harshp@prowesolution.com).

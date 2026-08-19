@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Dual by Harsh</string>
-    <string name="tagline">Your private second space</string>
-    <string name="admin_description">Dual by Harsh manages your private work space where cloned apps live in isolation. Removing this space deletes only the clones — your personal apps stay untouched.</string>
+    <string name="app_name">Motion by Harsh</string>
+    <string name="tagline">Turn any photo into a living wallpaper</string>
+    <string name="wallpaper_description">A photo animated with parallax, particles, light and touch — made in Motion by Harsh.</string>
 </resources>

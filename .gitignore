@@ -9,4 +9,4 @@
 .cxx/
 app/build/
 *.apk
-!out/DualByHarsh.apk
+!out/MotionByHarsh.apk

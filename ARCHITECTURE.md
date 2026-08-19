@@ -1,79 +1,72 @@
 # Architecture
 
-## 1. Selected virtualization engine: Android Managed Work Profile
+## Overview
+Motion by Harsh is built on Android's official **Live Wallpaper** framework
+(`android.service.wallpaper.WallpaperService`) — a first-party, fully-supported
+mechanism with no OS-level restrictions to work around (unlike app-cloning,
+Live Wallpapers are a standard user-facing feature on every Android device).
 
-After evaluating the candidates from the plan, the chosen engine is Android's
-**managed profile** (Work Profile), driven via `DevicePolicyManager`.
-
-| Candidate | Verdict |
-|---|---|
-| **VirtualApp** | Rejected. Unmaintained; broken on Android 10+ without root; relies on hidden APIs blocked by non-SDK restrictions and stricter SELinux. |
-| **BlackBox** | Rejected. Same class of non-root container; modern builds are commercial/obfuscated and still fragile on Android 12+. Shipping it would mean unstable/fake cloning. |
-| **Android Work Profile** | **Selected.** First-party, no root, no ADB, real data isolation, actively supported by the OS. Same mechanism as the open-source apps Island and Shelter. |
-
-### Why
-The plan (§54) demands honesty over pretend-cloning. Non-root in-app
-virtualization cannot deliver a real, stable clone on current Android. The
-managed profile is the only mechanism that is **real, no-root, and maintained**.
-
-### License
-Uses only the Android SDK (`android.app.admin.*`, `android.content.pm.LauncherApps`).
-No third-party engine is bundled, so no external engine license applies.
-
-## 2. Android compatibility
-- **Min SDK 26** (Android 8.0). The cross-profile install path
-  (`installExistingPackage`, cross-profile intent forwarding, `LauncherApps`
-  profile enumeration) is reliable from 26 up.
-- Target SDK 34. ARM64 / ARMv7 / x86 are all supported — the app carries no
-  native code of its own; clones keep their own native libraries.
-
-## 3. Architecture layers
 ```
-Jetpack Compose UI  (ui/screens, ui/components, ui/theme)
+Jetpack Compose UI  (Home, Editor, Settings)
         │
-ViewModel / State   (viewmodel/DualViewModel)
+ViewModel / State   (MotionViewModel)
         │
-Domain / Data       (data/*: AppDiscovery, CloneRepository, Models)
+Domain / Data       (WallpaperConfig, WallpaperRepository, Templates)
         │
-VirtualizationEngine interface  (engine/VirtualizationEngine)
-        │
-WorkProfileEngine  ── forwarded cross-profile intent ──▶  AgentActivity
-(personal profile)                                        (work profile,
-                                                           profile owner)
-        │
-Android Framework (DevicePolicyManager, LauncherApps, PackageInstaller)
+Shared render/physics engine   (EffectRenderer)
+        │              │
+EffectPreviewView   MotionWallpaperService.Engine
+(in-app editor)     (actual live wallpaper)
+        │              │
+Android Canvas / SensorManager / WallpaperManager
 ```
 
-## 4. Package management strategy
-- Discovery: `PackageManager.queryIntentActivities(MAIN/LAUNCHER)` in the
-  personal profile, honoring Android 11+ package-visibility via a `<queries>`
-  entry.
-- Cloning: the profile owner calls `DevicePolicyManager.installExistingPackage`,
-  which re-installs an app **already present on the device** into the work
-  profile. No APK copying, no repackaging, no package renaming.
+The **same `EffectRenderer`** draws both the in-app editor preview and the real
+wallpaper, so what the user designs is exactly what they get — no separate,
+divergent "preview mode."
 
-## 5. Process / cross-profile model
-The personal UI cannot call profile-owner APIs directly. It fires a **forwarded
-cross-profile intent** (`com.harsh.dual.action.AGENT`), enabled in
-`onProfileProvisioningComplete` via
-`addCrossProfileIntentFilter(FLAG_PARENT_CAN_ACCESS_MANAGED)`. Android routes it
-to `AgentActivity` running inside the work profile, which performs the
-privileged operation and finishes. Results are confirmed by re-scanning the work
-profile through `LauncherApps` (forwarded intents do not return results).
+## Effect model
+The product brief lists ~30 interaction names (Tilt Effect, Gyroscope Control,
+Parallax Layers, Motion Follow, Perspective Shift, Depth Layers, Motion
+Tracking, Touch Reactive, Ripple, Press & Hold, Double Tap, Drag, Swipe, Zoom on
+Touch...). Many of these describe the *same underlying mechanic* viewed from
+different angles. Rather than faking distinct implementations for each name,
+they are grouped into six real, independently-toggleable engines in
+`EffectType`: Gyro Parallax, Floating Motion, Touch Ripple, Particles, Dynamic
+Light, Shake Burst. Each has genuinely different rendering/physics code — see
+`WallpaperModels.kt` for the mapping.
 
-> Note: the cross-profile install/remove path is the piece most dependent on
-> real-device behavior and OEM policy. It is implemented against documented APIs;
-> device testing may surface OEM-specific quirks (documented in COMPATIBILITY.md).
+## Data flow
+- `WallpaperConfig` (photo URI + chosen effects + particle style + intensity)
+  is the single source of truth, persisted as JSON in DataStore
+  (`WallpaperRepository`).
+- Applying a wallpaper marks a config "active"; `MotionWallpaperService` reads
+  the active config at engine creation and on each surface change.
+- The photo itself is referenced by its picked `content://` URI — the system
+  Photo Picker grants persistent read access automatically, so no copy of the
+  original file is made and no storage permission is requested.
 
-## 6. Storage isolation
-Handled entirely by the OS: the work profile has its own user ID and fully
-separate app-data sandbox. This app stores only clone **metadata** (labels,
-timestamps) in its own DataStore — never cloned app data.
+## Rendering & sensors
+- `EffectRenderer`: allocation-light Canvas drawing + physics (particles,
+  ripples, parallax offset, light sweep). Paint/Shader objects are created once
+  and reused; shader movement uses `setLocalMatrix` instead of recreating
+  shaders every frame.
+- `MotionSensor`: wraps the single hardware-fused rotation-vector sensor
+  (cheaper than combining accelerometer + magnetometer manually) at
+  `SENSOR_DELAY_GAME`, plus an optional linear-accelerometer listener for shake
+  detection.
+- `BitmapLoader`: decodes photos downsampled to screen resolution
+  (`inSampleSize`), never at full camera resolution.
 
-## 7. Permission model
-Cloned apps request their own runtime permissions inside the profile through the
-normal Android dialogs. This app never auto-grants dangerous permissions.
+## Battery & lifecycle discipline
+See [PERFORMANCE.md](PERFORMANCE.md) for the specific mechanisms — the summary
+is: sensors and the draw loop run *only* while the wallpaper (or editor
+preview) is actually visible, and stop immediately otherwise.
 
-## 8. Known limitations
-See [COMPATIBILITY.md](COMPATIBILITY.md) and README. Hardware-key / Play
-Integrity / DRM apps are intentionally not bypassed.
+## Compatibility
+- Min SDK 26 (Android 8.0) through the latest release, one code path — no
+  version-gated feature forks were needed for Photo Picker, the live wallpaper
+  API, or the rotation-vector sensor.
+- Devices lacking a gyroscope degrade gracefully: Gyro Parallax has no input to
+  react to (photo stays still under that effect), while Floating, Touch,
+  Particles, Dynamic Light and Shake are unaffected.

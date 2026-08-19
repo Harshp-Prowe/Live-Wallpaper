@@ -1,80 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- See installed launchable apps (Android 11+ package visibility). -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent>
-    </queries>
-
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-    <uses-permission android:name="android.permission.INTERACT_ACROSS_PROFILES" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <!-- Photo Picker (PickVisualMedia) needs no storage permission on any
+         supported API level, so the app requests none. -->
+    <uses-feature android:name="android.software.live_wallpaper" android:required="true" />
 
     <application
-        android:name=".DualApp"
+        android:name=".MotionApp"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.DualByHarsh">
+        android:theme="@style/Theme.MotionByHarsh">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.DualByHarsh">
+            android:theme="@style/Theme.MotionByHarsh">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- Profile owner / device admin. The OS instantiates this. -->
-        <receiver
-            android:name=".engine.DualAdminReceiver"
-            android:description="@string/admin_description"
+        <service
+            android:name=".wallpaper.MotionWallpaperService"
             android:exported="true"
-            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
             <meta-data
-                android:name="android.app.device_admin"
-                android:resource="@xml/device_admin" />
-            <intent-filter>
-                <action android:name="android.app.action.PROFILE_PROVISIONING_COMPLETE" />
-                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Cross-profile worker. Android forwards the personal profile's DUAL
-             intent to this activity inside the work profile, where it has
-             profile-owner power to install / remove / wipe. -->
-        <activity
-            android:name=".engine.CloneForwardActivity"
-            android:excludeFromRecents="true"
-            android:exported="true"
-            android:noHistory="true"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar">
-            <intent-filter>
-                <action android:name="com.harsh.dual.action.DUAL" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-
-        <!-- Handles PackageInstaller status; shows the confirm dialog if the OS
-             asks for one instead of letting the install stall. -->
-        <receiver
-            android:name=".engine.InstallResultReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.harsh.dual.INSTALL_DONE" />
-            </intent-filter>
-        </receiver>
+                android:name="android.service.wallpaper"
+                android:resource="@xml/wallpaper" />
+        </service>
 
     </application>
 </manifest>

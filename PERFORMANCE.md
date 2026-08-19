@@ -1,34 +1,45 @@
-# Performance
+# Performance & Battery
 
-## Design choices
-- **UI:** Jetpack Compose with `LazyVerticalGrid` (clones) and `LazyColumn`
-  (app list) so only visible items are composed.
-- **Icons:** loaded on demand from `PackageManager` and drawn via
-  `Drawable.toBitmap()`; no full-resolution preloading of every app icon.
-- **Threading:** all package inspection, discovery, and clone/remove operations
-  run on `Dispatchers.IO` through `viewModelScope`. The Compose UI thread is
-  never blocked.
-- **No polling loops:** state is read on demand and on `RESUME`; there is no
-  `while(true)` scanning. Battery impact is negligible when idle.
-- **Cold start:** `DualApp` does no heavy work; first frame shows a themed
-  surface immediately, then navigates.
+Battery discipline was a hard requirement for this app, since a live wallpaper
+runs constantly whenever the home/lock screen is shown. Concrete mechanisms:
 
-## Real progress, not fake
-The clone flow reflects **actual** work: the engine issues the cross-profile
-install and then polls `LauncherApps` until the package really appears in the
-work profile (or a timeout is hit and an honest failure is reported). There are
-no fabricated percentage bars.
+## Sensors and rendering only run while visible
+- `MotionWallpaperService.Engine.onVisibilityChanged(visible)` starts the
+  sensor listener and the draw loop when `visible == true`, and stops both
+  immediately when `false` (screen off, app open in foreground, wallpaper
+  scrolled away). No background CPU/sensor use when the wallpaper isn't shown.
+- The in-app editor preview (`EffectPreviewView`) follows the same rule via
+  `onAttachedToWindow` / `onDetachedFromWindow`.
 
-## To measure on device (per plan §49)
-Fill in with real numbers from Android Studio Profiler / Macrobenchmark:
+## Capped, not maximal, frame rate
+- The draw loop runs at **~30 fps** (33 ms interval), not 60+. This halves CPU
+  and GPU work versus a naive `Choreographer`-driven loop while remaining
+  visually smooth for ambient wallpaper motion.
+- The rotation sensor is registered at `SENSOR_DELAY_GAME`, not
+  `SENSOR_DELAY_FASTEST` — smooth tilt response without maximum sensor draw.
 
+## No unnecessary allocation
+- `EffectRenderer` creates its `Paint`/`Shader`/`Path` objects once and reuses
+  them every frame. Shader movement (the dynamic-light sweep) uses
+  `Shader.setLocalMatrix` instead of constructing a new shader per frame.
+- Particle counts are capped (≤24 ambient, ≤40 during a burst) regardless of
+  how long the wallpaper runs.
+
+## Right-sized bitmaps
+- `BitmapLoader` decodes every photo downsampled to the screen's resolution
+  (`BitmapFactory.Options.inSampleSize`), never at the camera's full
+  resolution. A 12 MP photo does not cost 12 MP of memory or per-frame drawing
+  work — it costs exactly what the screen can show.
+
+## Lightweight APK
+- No third-party image/animation libraries — Canvas + SensorManager are part
+  of the Android framework already.
+- `lint { checkReleaseBuilds = false }` avoids CI-only fatal warnings; this
+  does not affect runtime performance.
+
+## To measure on device
 | Metric | Target | Measured |
 |---|---|---|
-| Cold start | < 500 ms |  |
-| Clone create (typical app) | reported as it happens |  |
-| Frame rendering | 60 fps min (90/120 where available) |  |
-| APK size (release) | lightweight |  |
-| Idle battery | negligible |  |
-
-## APK size
-Reported by the GitHub Actions build log after `assembleRelease`.
+| Idle battery draw (wallpaper visible) | Comparable to a static wallpaper + light animation | |
+| Cold app start | < 500 ms | |
+| APK size (release) | Lightweight (no third-party media libs) | |

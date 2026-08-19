@@ -1,2 +1,3 @@
-# Keep DeviceAdminReceiver and cross-profile service intact (referenced by the OS).
--keep class com.harsh.dual.engine.** { *; }
+# Keep the live wallpaper service and engine intact (referenced by the OS via manifest).
+-keep class com.harsh.motion.wallpaper.** { *; }
+-keep class com.harsh.motion.engine.** { *; }

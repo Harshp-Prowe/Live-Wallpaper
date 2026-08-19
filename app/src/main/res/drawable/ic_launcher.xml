@@ -4,22 +4,44 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Brand background (deep azure) -->
+    <!-- Sunset gradient background -->
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr xmlns:aapt="http://schemas.android.com/aapt" name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0" android:startY="0"
+                android:endX="108" android:endY="108"
+                android:startColor="#FF6B35"
+                android:endColor="#F72585" />
+        </aapt:attr>
+    </path>
+
+    <!-- Photo frame -->
     <path
-        android:fillColor="#0E5C8A"
-        android:pathData="M0,0h108v108h-108z" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M26,32 h56 v44 h-56 z M34,40 h40 v28 h-40 z" />
 
-    <!-- Ghost "H" behind = the clone / duplicate (Baby Blue) -->
-    <group android:name="ghost">
-        <path android:fillColor="#89CFF0" android:pathData="M37,38 h10 v46 h-10 z" />
-        <path android:fillColor="#89CFF0" android:pathData="M63,38 h10 v46 h-10 z" />
-        <path android:fillColor="#89CFF0" android:pathData="M37,56 h36 v10 h-36 z" />
-    </group>
+    <!-- Mountain / photo content inside frame -->
+    <path
+        android:fillColor="#FFD166"
+        android:pathData="M34,68 l10,-14 l8,9 l7,-11 l15,16 z" />
+    <path
+        android:fillColor="#F72585"
+        android:pathAlpha="0.85"
+        android:pathData="M60,44 m-4,0 a4,4 0,1 1,8 0 a4,4 0,1 1,-8 0" />
 
-    <!-- Front "H" = Harsh (the original) -->
-    <group android:name="front">
-        <path android:fillColor="#FFFFFF" android:pathData="M28,30 h10 v46 h-10 z" />
-        <path android:fillColor="#FFFFFF" android:pathData="M54,30 h10 v46 h-10 z" />
-        <path android:fillColor="#FFFFFF" android:pathData="M28,48 h36 v10 h-36 z" />
-    </group>
+    <!-- Motion arcs = the animation -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M20,84 q34,14 68,0" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:pathAlpha="0.6"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M16,92 q38,16 76,0" />
 </vector>
