@@ -27,7 +27,7 @@
         android:pathData="M34,68 l10,-14 l8,9 l7,-11 l15,16 z" />
     <path
         android:fillColor="#F72585"
-        android:pathAlpha="0.85"
+        android:fillAlpha="0.85"
         android:pathData="M60,44 m-4,0 a4,4 0,1 1,8 0 a4,4 0,1 1,-8 0" />
 
     <!-- Motion arcs = the animation -->
@@ -39,7 +39,7 @@
         android:pathData="M20,84 q34,14 68,0" />
     <path
         android:strokeColor="#FFFFFF"
-        android:pathAlpha="0.6"
+        android:strokeAlpha="0.6"
         android:strokeWidth="3"
         android:strokeLineCap="round"
         android:fillColor="#00000000"

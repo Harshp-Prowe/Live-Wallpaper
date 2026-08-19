@@ -34,6 +34,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import com.harsh.motion.data.EffectAliases
 import com.harsh.motion.data.EffectType
 import com.harsh.motion.data.ParticleStyle
 import com.harsh.motion.engine.EffectPreviewView
@@ -97,21 +100,16 @@ fun EditorScreen(
 
                 item { Text("Animation & interaction", style = MaterialTheme.typography.titleMedium) }
                 item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(EffectType.values().toList()) { effect ->
-                            FilterChip(
-                                selected = effect in state.effects,
-                                onClick = { onToggleEffect(effect) },
-                                label = { Text(effect.label) },
-                            )
-                        }
-                    }
-                }
-                item {
                     Text(
-                        state.effects.joinToString("\n") { "${it.label}: ${it.description}" },
+                        "Pick any — synonyms of the same motion highlight together.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                item {
+                    EffectChipCloud(
+                        selectedEffects = state.effects,
+                        onToggleEffect = onToggleEffect,
                     )
                 }
 
@@ -152,6 +150,23 @@ fun EditorScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun EffectChipCloud(
+    selectedEffects: Set<EffectType>,
+    onToggleEffect: (EffectType) -> Unit,
+) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        EffectAliases.all.forEach { alias ->
+            FilterChip(
+                selected = alias.effect in selectedEffects,
+                onClick = { onToggleEffect(alias.effect) },
+                label = { Text(alias.label) },
+            )
         }
     }
 }
