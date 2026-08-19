@@ -15,6 +15,7 @@ object CloneBridge {
 
     const val EXTRA_OP = "op"
     const val EXTRA_PKG = "pkg"
+    const val EXTRA_APKS = "apks"
     const val EXTRA_REPLY = "reply"
 
     const val OP_CLONE = "clone"

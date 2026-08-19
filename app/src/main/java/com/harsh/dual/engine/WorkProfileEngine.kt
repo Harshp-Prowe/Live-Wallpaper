@@ -82,6 +82,12 @@ class WorkProfileEngine(context: Context) : VirtualizationEngine {
         }
     }
 
+    /** All APK files (base + splits) for an installed package. */
+    private fun apkPathsFor(pkg: String): Array<String> = runCatching {
+        val ai = app.packageManager.getApplicationInfo(pkg, 0)
+        (listOfNotNull(ai.sourceDir) + (ai.splitSourceDirs?.toList() ?: emptyList())).toTypedArray()
+    }.getOrDefault(emptyArray())
+
     /** Fire one forwarded operation into the work profile. */
     private fun fireOp(op: String, pkg: String?) {
         CloneBridge.lastReport = null
@@ -93,7 +99,10 @@ class WorkProfileEngine(context: Context) : VirtualizationEngine {
             addCategory(Intent.CATEGORY_DEFAULT)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             putExtra(CloneBridge.EXTRA_OP, op)
-            pkg?.let { putExtra(CloneBridge.EXTRA_PKG, it) }
+            pkg?.let {
+                putExtra(CloneBridge.EXTRA_PKG, it)
+                if (op == CloneBridge.OP_CLONE) putExtra(CloneBridge.EXTRA_APKS, apkPathsFor(it))
+            }
             putExtra(CloneBridge.EXTRA_REPLY, reply)
         }
         app.startActivity(intent)
@@ -149,7 +158,8 @@ class WorkProfileEngine(context: Context) : VirtualizationEngine {
     }
 
     private suspend fun awaitPresence(pkg: String, present: Boolean): Boolean {
-        repeat(30) {
+        // Installing large APKs can take a while; allow up to ~45s.
+        repeat(90) {
             if (isInWorkProfile(pkg) == present) return true
             delay(500)
         }
