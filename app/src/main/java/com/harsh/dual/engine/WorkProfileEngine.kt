@@ -1,6 +1,7 @@
 package com.harsh.dual.engine
 
 import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
@@ -48,6 +49,23 @@ class WorkProfileEngine(context: Context) : VirtualizationEngine {
         }
     }
 
+    /**
+     * The app is installed in BOTH profiles, so an AgentActivity command intent
+     * would otherwise be caught by the local (personal) copy, which has no
+     * privileges. Disabling the personal copy forces the intent through the
+     * cross-profile forwarder into the work profile, where the real agent runs.
+     * Per-user and idempotent — only affects the personal profile.
+     */
+    private fun ensureAgentRouting() {
+        runCatching {
+            app.packageManager.setComponentEnabledSetting(
+                ComponentName(app, AgentActivity::class.java),
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+        }
+    }
+
     private fun isInWorkProfile(pkg: String): Boolean {
         val user = workUser() ?: return false
         return runCatching { launcher.getActivityList(pkg, user).isNotEmpty() }
@@ -58,6 +76,7 @@ class WorkProfileEngine(context: Context) : VirtualizationEngine {
         if (workUser() == null) return@withContext EngineResult.Failure("Private space is not set up yet.")
         if (isInWorkProfile(packageName)) return@withContext EngineResult.Success
 
+        ensureAgentRouting()
         runCatching {
             app.startActivity(AgentActivity.opIntent(AgentActivity.OP_CLONE, packageName))
         }.onFailure {
@@ -73,6 +92,7 @@ class WorkProfileEngine(context: Context) : VirtualizationEngine {
 
     override suspend fun removeClone(packageName: String): EngineResult = withContext(Dispatchers.IO) {
         if (!isInWorkProfile(packageName)) return@withContext EngineResult.Success
+        ensureAgentRouting()
         runCatching { app.startActivity(AgentActivity.opIntent(AgentActivity.OP_REMOVE, packageName)) }
             .onFailure { return@withContext EngineResult.Failure("Could not reach the private space.") }
         if (awaitPresence(packageName, present = false)) EngineResult.Success
@@ -91,6 +111,7 @@ class WorkProfileEngine(context: Context) : VirtualizationEngine {
 
     override suspend fun removeSpace(): EngineResult = withContext(Dispatchers.IO) {
         if (workUser() == null) return@withContext EngineResult.Success
+        ensureAgentRouting()
         runCatching { app.startActivity(AgentActivity.opIntent(AgentActivity.OP_WIPE)) }
             .onFailure { return@withContext EngineResult.Failure("Could not remove the space automatically.") }
         // wipeData tears the profile down; profiles list will empty out.

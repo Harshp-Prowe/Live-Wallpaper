@@ -71,7 +71,12 @@ class AppDiscovery(private val context: Context) {
         }.getOrDefault(false)
     }
 
-    /** Compatibility heuristic — deliberately conservative and honest. */
+    /**
+     * Compatibility heuristic — device- and version-agnostic. Most apps are
+     * rated High; only genuinely device-bound categories (which no non-root
+     * clone can satisfy) are marked Unsupported. We do not blanket-flag apps
+     * just for using Google services, since most apps do.
+     */
     fun rate(
         minSdk: Int,
         targetSdk: Int,
@@ -79,20 +84,21 @@ class AppDiscovery(private val context: Context) {
         pm: PackageManager,
         pkg: String,
     ): CompatibilityReport {
-        // Known device-bound app families that resist any non-root isolation.
-        val hardBlocked = listOf("bank", "upi", "netflix", "gpay", "wallet", "authenticator")
-        if (hardBlocked.any { pkg.contains(it, ignoreCase = true) }) {
+        val p = pkg.lowercase()
+
+        // Apps that rely on hardware-backed keys / Play Integrity / DRM. A second
+        // instance cannot satisfy these, and this app never bypasses them.
+        val deviceBound = listOf(
+            "bank", "upi", "wallet", "authenticator", "otp",
+            "netflix", "primevideo", "hotstar", "jiocinema", "sonyliv", "widevine",
+        )
+        if (deviceBound.any { p.contains(it) }) {
             return CompatibilityReport(
                 Compatibility.UNSUPPORTED,
-                "This app category relies on hardware-backed keys or Play Integrity, which a cloned instance cannot satisfy. Bypassing it is not supported.",
+                "Relies on hardware-backed keys / Play Integrity / DRM that a cloned instance cannot satisfy. Not bypassed by design.",
             )
         }
-        if (google) {
-            return CompatibilityReport(
-                Compatibility.PARTIAL,
-                "Uses Google Play Services. Push notifications and Google Sign-In may be limited inside the second space.",
-            )
-        }
-        return CompatibilityReport(Compatibility.HIGH, "Expected to work in the second space.")
+
+        return CompatibilityReport(Compatibility.HIGH, "Expected to work in your second space.")
     }
 }
