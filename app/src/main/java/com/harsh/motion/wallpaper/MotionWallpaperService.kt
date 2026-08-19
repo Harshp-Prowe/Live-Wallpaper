@@ -94,8 +94,9 @@ class MotionWallpaperService : WallpaperService() {
             val r = renderer ?: return
             val uriString = activeConfig?.photoUri ?: return
             r.setSize(width, height)
-            BitmapLoader.decodeScaled(this@MotionWallpaperService, Uri.parse(uriString), maxOf(width, height))
-                ?.let { r.setBitmap(it) }
+            runCatching {
+                BitmapLoader.decodeScaled(this@MotionWallpaperService, Uri.parse(uriString), maxOf(width, height))
+            }.onSuccess { r.setBitmap(it) }
         }
 
         override fun onVisibilityChanged(visible: Boolean) {

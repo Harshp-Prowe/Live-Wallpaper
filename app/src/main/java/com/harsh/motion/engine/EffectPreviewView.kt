@@ -3,6 +3,8 @@ package com.harsh.motion.engine
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -26,6 +28,14 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
     private val handler = Handler(Looper.getMainLooper())
     private var lastFrameTime = 0L
     private var running = false
+    private var errorText: String? = null
+    private val errorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textSize = 34f
+    }
+
+    /** Called on the main thread if the photo fails to decode, with the real reason. */
+    var onLoadFailed: ((String) -> Unit)? = null
 
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean {
@@ -62,9 +72,17 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
     }
 
     private fun loadPhoto() {
-        if (width == 0 || height == 0) return
-        BitmapLoader.decodeScaled(context, Uri.parse(config.photoUri), maxOf(width, height))
-            ?.let { renderer.setBitmap(it) }
+        if (width == 0 || height == 0 || config.photoUri.isBlank()) return
+        errorText = null
+        runCatching {
+            BitmapLoader.decodeScaled(context, Uri.parse(config.photoUri), maxOf(width, height))
+        }.onSuccess { renderer.setBitmap(it) }
+            .onFailure { e ->
+                val msg = "Couldn't load photo: ${e.javaClass.simpleName}: ${e.message}"
+                errorText = msg
+                onLoadFailed?.invoke(msg)
+            }
+        invalidate()
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -75,6 +93,9 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
 
     override fun onDraw(canvas: Canvas) {
         renderer.draw(canvas)
+        errorText?.let { msg ->
+            canvas.drawText(msg, 24f, height / 2f, errorPaint)
+        }
     }
 
     override fun onAttachedToWindow() {
