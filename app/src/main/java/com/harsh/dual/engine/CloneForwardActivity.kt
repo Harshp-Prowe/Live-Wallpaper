@@ -23,45 +23,49 @@ class CloneForwardActivity : Activity() {
         val admin = DualAdminReceiver.componentName(this)
         val op = intent.getStringExtra(CloneBridge.EXTRA_OP)
         val pkg = intent.getStringExtra(CloneBridge.EXTRA_PKG)
+        val apks = intent.getStringArrayExtra(CloneBridge.EXTRA_APKS)
         @Suppress("DEPRECATION")
         val reply = intent.getParcelableExtra<Messenger>(CloneBridge.EXTRA_REPLY)
 
-        val report = if (!dpm.isProfileOwnerApp(packageName)) {
-            "not-profile-owner"
-        } else when (op) {
-            CloneBridge.OP_CLONE -> {
-                val apks = intent.getStringArrayExtra(CloneBridge.EXTRA_APKS)
-                if (pkg.isNullOrEmpty() || apks.isNullOrEmpty()) "clone(no-apks)"
-                else runCatching { installApks(pkg, apks) }
-                    .getOrElse { "clone err=${it.javaClass.simpleName}:${it.message}" }
+        // Copying a large APK must not run on the main thread (ANR). Do all the
+        // work in the background, then reply and finish on the main thread.
+        Thread {
+            val report = if (!dpm.isProfileOwnerApp(packageName)) {
+                "not-profile-owner"
+            } else when (op) {
+                CloneBridge.OP_CLONE ->
+                    if (pkg.isNullOrEmpty() || apks.isNullOrEmpty()) "clone(no-apks)"
+                    else runCatching { installApks(pkg, apks) }
+                        .getOrElse { "clone err=${it.javaClass.simpleName}:${it.message}" }
+
+                CloneBridge.OP_REMOVE -> if (pkg.isNullOrEmpty()) "remove(no-pkg)" else
+                    runCatching { uninstall(pkg); "remove($pkg)=requested" }
+                        .getOrElse { "remove err=${it.javaClass.simpleName}" }
+
+                CloneBridge.OP_WIPE -> runCatching { dpm.wipeData(0); "wipe=ok" }
+                    .getOrElse { "wipe err=${it.javaClass.simpleName}" }
+
+                else -> "unknown-op=$op"
             }
+            runCatching {
+                reply?.send(Message.obtain().apply {
+                    data = Bundle().apply { putString(CloneBridge.REPORT_KEY, report) }
+                })
+            }
+            runOnUiThread { if (!isFinishing) finish() }
+        }.start()
+    }
 
-            CloneBridge.OP_REMOVE -> if (pkg.isNullOrEmpty()) "remove(no-pkg)" else
-                runCatching {
-                    packageManager.packageInstaller.uninstall(
-                        pkg, android.app.PendingIntent.getBroadcast(
-                            this, 0,
-                            android.content.Intent("com.harsh.dual.UNINSTALL_DONE").setPackage(packageName),
-                            android.app.PendingIntent.FLAG_UPDATE_CURRENT or
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S)
-                                    android.app.PendingIntent.FLAG_MUTABLE else 0,
-                        ).intentSender,
-                    )
-                    "remove($pkg)=requested"
-                }.getOrElse { "remove err=${it.javaClass.simpleName}" }
-
-            CloneBridge.OP_WIPE -> runCatching { dpm.wipeData(0); "wipe=ok" }
-                .getOrElse { "wipe err=${it.javaClass.simpleName}" }
-
-            else -> "unknown-op=$op"
-        }
-
-        runCatching {
-            reply?.send(Message.obtain().apply {
-                data = Bundle().apply { putString(CloneBridge.REPORT_KEY, report) }
-            })
-        }
-        finish()
+    private fun uninstall(pkg: String) {
+        packageManager.packageInstaller.uninstall(
+            pkg, android.app.PendingIntent.getBroadcast(
+                this, 0,
+                android.content.Intent("com.harsh.dual.UNINSTALL_DONE").setPackage(packageName),
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S)
+                        android.app.PendingIntent.FLAG_MUTABLE else 0,
+            ).intentSender,
+        )
     }
 
     /**

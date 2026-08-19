@@ -66,5 +66,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Handles PackageInstaller status; shows the confirm dialog if the OS
+             asks for one instead of letting the install stall. -->
+        <receiver
+            android:name=".engine.InstallResultReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.harsh.dual.INSTALL_DONE" />
+            </intent-filter>
+        </receiver>
+
     </application>
 </manifest>

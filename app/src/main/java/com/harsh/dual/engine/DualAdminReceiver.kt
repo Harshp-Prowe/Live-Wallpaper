@@ -5,6 +5,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 
 /**
  * Device admin / profile-owner receiver. Android instantiates this inside the
@@ -19,6 +20,18 @@ class DualAdminReceiver : DeviceAdminReceiver() {
         // Name the profile and switch it on so its apps become usable.
         runCatching { dpm.setProfileName(admin, "Dual by Harsh") }
         runCatching { dpm.setProfileEnabled(admin) }
+
+        // Route the personal profile's DUAL intents into here, so even the very
+        // first clone works without depending on timing. FLAG_MANAGED_CAN_ACCESS_PARENT
+        // = the managed profile handles intents sent from the parent (personal).
+        runCatching {
+            val filter = IntentFilter(CloneBridge.ACTION).apply {
+                addCategory(Intent.CATEGORY_DEFAULT)
+            }
+            dpm.addCrossProfileIntentFilter(
+                admin, filter, DevicePolicyManager.FLAG_MANAGED_CAN_ACCESS_PARENT,
+            )
+        }
     }
 
     companion object {
