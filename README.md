@@ -1,4 +1,4 @@
-# Motion by Harsh
+# HarshFlow
 
 Turn any photo into a living wallpaper — with gyroscope parallax, touch
 ripples, drifting particles, dynamic light, and floating motion. No root, no
@@ -41,7 +41,7 @@ No Android Studio, SDK, or Java needed on your PC — GitHub builds the APK:
 
 1. Push this project to GitHub. The **Build APK** Action runs automatically.
 2. Download the finished APK from the repo's **Releases → latest →
-   `MotionByHarsh.apk`**, or from the Actions run's **Artifacts**.
+   `HarshFlow.apk`**, or from the Actions run's **Artifacts**.
 3. Copy it to your phone, open it, allow "install unknown apps" if prompted,
    install.
 

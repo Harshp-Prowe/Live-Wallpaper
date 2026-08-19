@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "MotionByHarsh"
+rootProject.name = "HarshFlow"
 include(":app")

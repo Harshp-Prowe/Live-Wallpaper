@@ -55,7 +55,7 @@ fun SettingsScreen(
             }
             Divider()
             Text("About", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-            Text("Motion by Harsh · Version 1.0.0", style = MaterialTheme.typography.bodyMedium)
+            Text("HarshFlow · Version 1.0.0", style = MaterialTheme.typography.bodyMedium)
             Text(
                 "Turns your photos into animated live wallpapers using Android's official live wallpaper engine, phone sensors and touch — fully on-device, no account needed.",
                 style = MaterialTheme.typography.bodySmall,

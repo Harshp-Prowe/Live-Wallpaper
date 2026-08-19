@@ -26,9 +26,19 @@ import java.util.UUID
 
 data class EditorState(
     val photoUri: String? = null,
-    val effects: Set<EffectType> = setOf(EffectType.TILT_PARALLAX),
+    // A single effect (esp. tilt-only) reads as "nothing is happening" until the
+    // phone is physically tilted. Defaulting to a combo that's alive on its own
+    // (floating drift + particles + light) plus the two interactive ones gives
+    // a lively result out of the box, matching what the templates already do.
+    val effects: Set<EffectType> = setOf(
+        EffectType.FLOATING,
+        EffectType.PARTICLES,
+        EffectType.DYNAMIC_LIGHT,
+        EffectType.TILT_PARALLAX,
+        EffectType.TOUCH_REACTIVE,
+    ),
     val particleStyle: ParticleStyle = ParticleStyle.SPARKLE,
-    val intensity: Float = 0.6f,
+    val intensity: Float = 0.75f,
     val name: String = "",
     val photoScale: Float = 1f,
     val photoOffsetX: Float = 0f,

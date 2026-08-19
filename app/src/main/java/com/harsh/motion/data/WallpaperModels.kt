@@ -96,9 +96,15 @@ data class WallpaperConfig(
     val id: String,
     val name: String,
     val photoUri: String,
-    val effects: Set<EffectType> = setOf(EffectType.TILT_PARALLAX),
+    val effects: Set<EffectType> = setOf(
+        EffectType.FLOATING,
+        EffectType.PARTICLES,
+        EffectType.DYNAMIC_LIGHT,
+        EffectType.TILT_PARALLAX,
+        EffectType.TOUCH_REACTIVE,
+    ),
     val particleStyle: ParticleStyle = ParticleStyle.SPARKLE,
-    val intensity: Float = 0.6f,
+    val intensity: Float = 0.75f,
     // User-chosen crop/position: scale 1x (fit whole photo) up to 4x (zoomed
     // in); offsetX/offsetY are -1..1 fractions of the available pan range at
     // the current scale, so they translate correctly between the small editor

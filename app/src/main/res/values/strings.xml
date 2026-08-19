@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Motion by Harsh</string>
+    <string name="app_name">HarshFlow</string>
     <string name="tagline">Turn any photo into a living wallpaper</string>
-    <string name="wallpaper_description">A photo animated with parallax, particles, light and touch — made in Motion by Harsh.</string>
+    <string name="wallpaper_description">A photo animated with parallax, particles, light and touch — made in HarshFlow.</string>
 </resources>

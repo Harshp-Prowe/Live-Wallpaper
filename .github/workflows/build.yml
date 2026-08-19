@@ -38,21 +38,21 @@ jobs:
       - name: Rename APK
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk out/MotionByHarsh.apk
+          cp app/build/outputs/apk/release/app-release.apk out/HarshFlow.apk
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MotionByHarsh-apk
-          path: out/MotionByHarsh.apk
+          name: HarshFlow-apk
+          path: out/HarshFlow.apk
 
       - name: Publish rolling release
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: Motion by Harsh (latest build)
+          name: HarshFlow (latest build)
           body: |
-            Automatically built APK. Download **MotionByHarsh.apk** below and sideload it.
+            Automatically built APK. Download **HarshFlow.apk** below and sideload it.
             Requires enabling "Install unknown apps" for your browser/file manager.
-          files: out/MotionByHarsh.apk
+          files: out/HarshFlow.apk

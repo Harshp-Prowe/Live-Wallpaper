@@ -56,7 +56,7 @@ fun HomeScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Motion by Harsh", style = MaterialTheme.typography.titleLarge)
+                        Text("HarshFlow", style = MaterialTheme.typography.titleLarge)
                         Text(
                             "Turn any photo into a living wallpaper",
                             style = MaterialTheme.typography.bodySmall,

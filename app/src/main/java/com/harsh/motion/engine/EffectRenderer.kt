@@ -3,6 +3,7 @@ package com.harsh.motion.engine
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
@@ -41,16 +42,48 @@ class EffectRenderer(private var config: WallpaperConfig) {
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val lightPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ripplePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rippleRimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 2.5f
+    }
+    // A cool, glassy cyan-white wash (instead of flat white) so the ripple
+    // reads as premium "liquid glass" rather than a generic touch-feedback
+    // circle; a thin bright rim (drawn separately, see rippleRimPaint) gives
+    // it a crisp edge instead of an all-over soft blob.
     private val rippleGradient = RadialGradient(
         0f, 0f, 1f,
-        intArrayOf(Color.argb(0, 255, 255, 255), Color.argb(200, 255, 255, 255), Color.argb(0, 255, 255, 255)),
-        floatArrayOf(0f, 0.85f, 1f),
+        intArrayOf(
+            Color.argb(0, 210, 240, 255),
+            Color.argb(70, 200, 235, 255),
+            Color.argb(150, 225, 245, 255),
+            Color.argb(0, 210, 240, 255),
+        ),
+        floatArrayOf(0f, 0.7f, 0.9f, 1f),
         Shader.TileMode.CLAMP,
     )
     private val particlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val heartPath = Path()
     private val shaderMatrix = Matrix()
     private var lightShader: RadialGradient? = null
+
+    // Slow diagonal "glass sheen" sweep — the same trick premium app icons
+    // and hero banners use for a moving specular highlight — layered on top
+    // of the warm radial glow so Dynamic Light reads as a polished reflection
+    // instead of a static color wash.
+    private val sheenPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val sheenGradient = LinearGradient(
+        -1f, 0f, 1f, 0f,
+        intArrayOf(Color.argb(0, 255, 255, 255), Color.argb(90, 255, 255, 255), Color.argb(0, 255, 255, 255)),
+        floatArrayOf(0f, 0.5f, 1f),
+        Shader.TileMode.CLAMP,
+    )
+    private val sheenMatrix = Matrix()
+
+    // A subtle cinematic vignette (dark, soft-edged corners) — cheap to add,
+    // and it's the single biggest "does this look professional" cue: it
+    // frames the photo instead of letting effects float over a flat rectangle.
+    private var vignettePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var vignetteShader: RadialGradient? = null
 
     private var floatPhase = 0f
     private var homeOffsetX = 0f // -1..1, from launcher swipe (onOffsetsChanged)
@@ -86,6 +119,12 @@ class EffectRenderer(private var config: WallpaperConfig) {
         // reference has been set (editor preview case).
         if (refWidth == 0 || refHeight == 0) setReferenceSize(w, h)
         seedParticles()
+        vignetteShader = RadialGradient(
+            w / 2f, h / 2f, kotlin.math.hypot(w / 2f, h / 2f) * 1.05f,
+            intArrayOf(Color.argb(0, 0, 0, 0), Color.argb(0, 0, 0, 0), Color.argb(140, 0, 0, 0)),
+            floatArrayOf(0f, 0.6f, 1f),
+            Shader.TileMode.CLAMP,
+        )
     }
 
     /** The single-screen size to scale/position against — pass the device's
@@ -99,13 +138,13 @@ class EffectRenderer(private var config: WallpaperConfig) {
         // Warm gold-white glow (not flat white) so it reads as a light
         // reflection rather than a washed-out haze, with a soft falloff.
         lightShader = RadialGradient(
-            0f, 0f, min(w, h) * 0.55f,
+            0f, 0f, min(w, h) * 0.65f,
             intArrayOf(
-                Color.argb(150, 255, 248, 220),
-                Color.argb(60, 255, 230, 180),
+                Color.argb(210, 255, 250, 225),
+                Color.argb(110, 255, 232, 180),
                 Color.argb(0, 255, 220, 160),
             ),
-            floatArrayOf(0f, 0.5f, 1f),
+            floatArrayOf(0f, 0.45f, 1f),
             Shader.TileMode.CLAMP,
         )
     }
@@ -128,14 +167,16 @@ class EffectRenderer(private var config: WallpaperConfig) {
     private fun seedParticles() {
         particles.clear()
         if (EffectType.PARTICLES !in config.effects || width == 0 || height == 0) return
-        val count = (10 + config.intensity * 14).toInt().coerceIn(6, 24)
+        // Denser and larger than before — the old range (6-24 tiny dots) read as
+        // near-invisible noise on a real screen rather than a deliberate effect.
+        val count = (18 + config.intensity * 24).toInt().coerceIn(14, 42)
         repeat(count) {
             particles += Particle(
                 x = Random.nextFloat() * width,
                 y = Random.nextFloat() * height,
-                vx = (Random.nextFloat() - 0.5f) * 6f,
-                vy = -Random.nextFloat() * 10f - 4f,
-                size = Random.nextFloat() * 10f + 6f,
+                vx = (Random.nextFloat() - 0.5f) * 8f,
+                vy = -Random.nextFloat() * 14f - 6f,
+                size = Random.nextFloat() * 16f + 10f,
                 phase = Random.nextFloat() * 6.28f,
             )
         }
@@ -202,7 +243,7 @@ class EffectRenderer(private var config: WallpaperConfig) {
                 phase = Random.nextFloat() * 6.28f,
             )
         }
-        while (particles.size > 40) particles.removeAt(0)
+        while (particles.size > 70) particles.removeAt(0)
     }
 
     fun draw(canvas: Canvas) {
@@ -218,9 +259,12 @@ class EffectRenderer(private var config: WallpaperConfig) {
         }
         dx += homeOffsetX * 60f * intensity
         if (EffectType.FLOATING in config.effects) {
-            dx += kotlin.math.sin(floatPhase * 0.6f) * 20f * intensity
-            dy += kotlin.math.cos(floatPhase * 0.5f) * 16f * intensity
-            breathe += kotlin.math.sin(floatPhase * 0.5f) * 0.035f * intensity
+            // Two overlapping frequencies per axis instead of one clean sine —
+            // reads as organic ambient drift rather than a metronome tick, and
+            // the amplitude is large enough to actually notice at a glance.
+            dx += (kotlin.math.sin(floatPhase * 0.6f) * 34f + kotlin.math.sin(floatPhase * 0.23f) * 16f) * intensity
+            dy += (kotlin.math.cos(floatPhase * 0.5f) * 26f + kotlin.math.cos(floatPhase * 0.31f) * 12f) * intensity
+            breathe += kotlin.math.sin(floatPhase * 0.5f) * 0.06f * intensity
         }
 
         canvas.drawColor(Color.BLACK)
@@ -258,9 +302,13 @@ class EffectRenderer(private var config: WallpaperConfig) {
             lightShader?.let { shader ->
                 // A slow autonomous drift on top of the tilt response keeps the
                 // glow gently alive even when the phone is sitting still.
-                val driftX = kotlin.math.sin(floatPhase * 0.15f) * refWidth * 0.12f
-                val driftY = kotlin.math.cos(floatPhase * 0.12f) * refHeight * 0.12f
+                val driftX = kotlin.math.sin(floatPhase * 0.15f) * refWidth * 0.18f
+                val driftY = kotlin.math.cos(floatPhase * 0.12f) * refHeight * 0.18f
+                // A slow breathing pulse on the glow's own size makes the sweep
+                // read as a living light source rather than a fixed overlay.
+                val pulse = 1f + kotlin.math.sin(floatPhase * 0.35f) * 0.18f
                 shaderMatrix.reset()
+                shaderMatrix.postScale(pulse, pulse)
                 shaderMatrix.postTranslate(
                     width / 2f + lastTiltX * refWidth * 0.4f + driftX,
                     height / 2f + lastTiltY * refHeight * 0.4f + driftY,
@@ -268,6 +316,22 @@ class EffectRenderer(private var config: WallpaperConfig) {
                 shader.setLocalMatrix(shaderMatrix)
                 lightPaint.shader = shader
                 canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), lightPaint)
+
+                // Diagonal specular sheen, swept slowly left-to-right and
+                // wrapping — the moving-highlight look modern glass/metal UI
+                // uses, layered over the static warm glow above.
+                canvas.save()
+                canvas.rotate(-18f, width / 2f, height / 2f)
+                val bandHalfWidth = width * 0.16f
+                val period = width * 2.6f
+                val sweepCenter = (floatPhase * 55f) % period - period / 2f
+                sheenMatrix.reset()
+                sheenMatrix.setScale(bandHalfWidth, 1f)
+                sheenMatrix.postTranslate(width / 2f + sweepCenter, 0f)
+                sheenGradient.setLocalMatrix(sheenMatrix)
+                sheenPaint.shader = sheenGradient
+                canvas.drawRect(-width.toFloat(), -height * 0.6f, width * 2f, height * 1.6f, sheenPaint)
+                canvas.restore()
             }
         }
 
@@ -283,25 +347,46 @@ class EffectRenderer(private var config: WallpaperConfig) {
                 ripplePaint.shader = rippleGradient
                 ripplePaint.alpha = r.alpha
                 canvas.drawCircle(0f, 0f, 1f, ripplePaint)
+                // Crisp bright rim on top of the soft glass wash — reads as a
+                // deliberate ring, not a fuzzy blob.
+                rippleRimPaint.color = Color.argb((r.alpha * 0.8f).toInt(), 235, 248, 255)
+                rippleRimPaint.strokeWidth = 2.5f / r.radius
+                canvas.drawCircle(0f, 0f, 0.9f, rippleRimPaint)
                 canvas.restore()
             }
+        }
+
+        vignetteShader?.let { shader ->
+            vignettePaint.shader = shader
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), vignettePaint)
         }
     }
 
     private fun drawParticle(canvas: Canvas, p: Particle) {
         when (config.particleStyle) {
             ParticleStyle.SPARKLE -> {
-                // A per-particle twinkle (alpha shimmer) instead of a flat dot.
+                // A per-particle twinkle (alpha shimmer) instead of a flat dot,
+                // plus a faint halo behind the core so it reads as a glint of
+                // light rather than a plain white dot.
                 val twinkle = (kotlin.math.sin(floatPhase * 3f + p.phase) * 0.5f + 0.5f)
-                particlePaint.color = Color.argb((120 + twinkle * 135f).toInt(), 255, 255, 255)
-                canvas.drawCircle(p.x, p.y, p.size / 3f * (0.7f + twinkle * 0.4f), particlePaint)
+                val core = p.size / 3f * (0.7f + twinkle * 0.4f)
+                particlePaint.color = Color.argb((40 + twinkle * 60f).toInt(), 255, 255, 255)
+                canvas.drawCircle(p.x, p.y, core * 2.4f, particlePaint)
+                particlePaint.color = Color.argb((150 + twinkle * 105f).toInt(), 255, 255, 255)
+                canvas.drawCircle(p.x, p.y, core, particlePaint)
             }
             ParticleStyle.BOKEH -> {
-                particlePaint.color = Color.argb(120, 255, 220, 180)
+                val twinkle = (kotlin.math.sin(floatPhase * 1.4f + p.phase) * 0.5f + 0.5f)
+                particlePaint.color = Color.argb(60, 255, 220, 180)
+                canvas.drawCircle(p.x, p.y, p.size * 1.7f, particlePaint)
+                particlePaint.color = Color.argb((110 + twinkle * 90f).toInt(), 255, 225, 170)
                 canvas.drawCircle(p.x, p.y, p.size, particlePaint)
             }
             ParticleStyle.HEART -> {
-                particlePaint.color = Color.argb(230, 247, 37, 133)
+                val twinkle = (kotlin.math.sin(floatPhase * 1.6f + p.phase) * 0.5f + 0.5f)
+                particlePaint.color = Color.argb((50 + twinkle * 40f).toInt(), 255, 90, 150)
+                canvas.drawCircle(p.x, p.y, p.size * 1.8f, particlePaint)
+                particlePaint.color = Color.argb((200 + twinkle * 55f).toInt(), 247, 37, 133)
                 drawHeart(canvas, p.x, p.y, p.size * 1.5f)
             }
         }
