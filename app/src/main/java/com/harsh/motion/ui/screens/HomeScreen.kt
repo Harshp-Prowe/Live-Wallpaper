@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,6 +49,7 @@ fun HomeScreen(
     onNewBlank: () -> Unit,
     onUseTemplate: (WallpaperTemplate) -> Unit,
     onOpenSaved: (WallpaperConfig) -> Unit,
+    onDeleteSaved: (WallpaperConfig) -> Unit,
 ) {
     Scaffold(
         topBar = {
@@ -111,7 +113,7 @@ fun HomeScreen(
                 }
             } else {
                 items(saved, key = { it.id }) { config ->
-                    SavedRow(config, onOpenSaved)
+                    SavedRow(config, onOpenSaved, onDeleteSaved)
                 }
             }
         }
@@ -159,10 +161,17 @@ private fun TemplateCard(template: WallpaperTemplate, modifier: Modifier, onUse:
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SavedRow(config: WallpaperConfig, onOpen: (WallpaperConfig) -> Unit) {
+private fun SavedRow(
+    config: WallpaperConfig,
+    onOpen: (WallpaperConfig) -> Unit,
+    onDelete: (WallpaperConfig) -> Unit,
+) {
     Card(onClick = { onOpen(config) }, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-        Box(Modifier.padding(16.dp)) {
-            Column {
+        Row(
+            Modifier.padding(16.dp).fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
                 Text(config.name, style = MaterialTheme.typography.bodyLarge)
                 Text(
                     config.effects.joinToString(" · ") { it.label },
@@ -170,6 +179,13 @@ private fun SavedRow(config: WallpaperConfig, onOpen: (WallpaperConfig) -> Unit)
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+            androidx.compose.material3.IconButton(onClick = { onDelete(config) }) {
+                androidx.compose.material3.Icon(
+                    Icons.Rounded.DeleteOutline,
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.error,
                 )
             }
         }

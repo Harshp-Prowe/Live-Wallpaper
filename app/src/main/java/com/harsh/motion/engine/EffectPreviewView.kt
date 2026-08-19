@@ -37,6 +37,10 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
     /** Called on the main thread if the photo fails to decode, with the real reason. */
     var onLoadFailed: ((String) -> Unit)? = null
 
+    // Pinch-zoom / drag-to-reposition live in the dedicated PhotoAdjustScreen
+    // instead of here, so this animated preview's touch is unambiguous: it
+    // always previews the chosen effects (tap ripple, double-tap burst) — the
+    // exact same touch behavior the real live wallpaper will have.
     private val gestures = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean {
             renderer.onTouchDown(e.x, e.y)
@@ -66,9 +70,13 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
     }
 
     fun updateConfig(newConfig: WallpaperConfig) {
+        val photoChanged = newConfig.photoUri != config.photoUri
         config = newConfig
         renderer.updateConfig(newConfig)
-        loadPhoto()
+        // Re-decoding from disk on every recomposition (e.g. during a live
+        // pinch/drag gesture, which recomposes many times per second) would be
+        // wasteful and slow — only reload when the photo itself changed.
+        if (photoChanged) loadPhoto()
     }
 
     private fun loadPhoto() {

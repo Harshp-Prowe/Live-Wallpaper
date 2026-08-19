@@ -28,6 +28,7 @@ import androidx.navigation.compose.rememberNavController
 import com.harsh.motion.data.Templates
 import com.harsh.motion.ui.screens.EditorScreen
 import com.harsh.motion.ui.screens.HomeScreen
+import com.harsh.motion.ui.screens.PhotoAdjustScreen
 import com.harsh.motion.ui.screens.SettingsScreen
 import com.harsh.motion.ui.theme.MotionTheme
 import com.harsh.motion.viewmodel.MotionViewModel
@@ -57,7 +58,12 @@ private fun MotionRoot() {
 
             val photoPicker = rememberLauncherForActivityResult(
                 ActivityResultContracts.PickVisualMedia(),
-            ) { uri -> uri?.let { vm.setPhoto(it) } }
+            ) { uri ->
+                uri?.let {
+                    vm.setPhoto(it)
+                    navController.navigate("adjust")
+                }
+            }
 
             val setWallpaperLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.StartActivityForResult(),
@@ -78,6 +84,7 @@ private fun MotionRoot() {
                                 onNewBlank = { vm.startBlank(); navController.navigate("editor") },
                                 onUseTemplate = { vm.startFromTemplate(it); navController.navigate("editor") },
                                 onOpenSaved = { vm.editExisting(it); navController.navigate("editor") },
+                                onDeleteSaved = { vm.delete(it) },
                             )
                         }
                         composable("editor") {
@@ -93,12 +100,26 @@ private fun MotionRoot() {
                                 onParticleStyle = { vm.setParticleStyle(it) },
                                 onIntensity = { vm.setIntensity(it) },
                                 onName = { vm.setName(it) },
+                                onReposition = { navController.navigate("adjust") },
                                 onSave = {
                                     scope.launch {
                                         if (vm.saveAndActivate() != null) {
                                             setWallpaperLauncher.launch(vm.buildSetWallpaperIntent())
                                         }
                                     }
+                                },
+                            )
+                        }
+                        composable("adjust") {
+                            PhotoAdjustScreen(
+                                photoUri = editor.photoUri,
+                                initialScale = editor.photoScale,
+                                initialOffsetX = editor.photoOffsetX,
+                                initialOffsetY = editor.photoOffsetY,
+                                onBack = { navController.popBackStack() },
+                                onConfirm = { s, ox, oy ->
+                                    vm.setPhotoTransform(s, ox, oy)
+                                    navController.popBackStack()
                                 },
                             )
                         }

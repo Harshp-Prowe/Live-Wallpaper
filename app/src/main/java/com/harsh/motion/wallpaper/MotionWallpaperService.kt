@@ -93,9 +93,20 @@ class MotionWallpaperService : WallpaperService() {
             super.onSurfaceChanged(holder, format, width, height)
             val r = renderer ?: return
             val uriString = activeConfig?.photoUri ?: return
+
+            // The wallpaper surface is often wider than one screen (Android
+            // gives room to pan between home-screen pages). Scale/position
+            // against the real single-screen resolution, not the raw surface
+            // size, or the photo ends up badly over-zoomed and mis-anchored.
+            val dm = resources.displayMetrics
+            r.setReferenceSize(dm.widthPixels, dm.heightPixels)
             r.setSize(width, height)
+
             runCatching {
-                BitmapLoader.decodeScaled(this@MotionWallpaperService, Uri.parse(uriString), maxOf(width, height))
+                BitmapLoader.decodeScaled(
+                    this@MotionWallpaperService, Uri.parse(uriString),
+                    maxOf(dm.widthPixels, dm.heightPixels),
+                )
             }.onSuccess { r.setBitmap(it) }
         }
 

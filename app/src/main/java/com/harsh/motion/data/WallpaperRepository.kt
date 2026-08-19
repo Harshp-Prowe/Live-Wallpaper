@@ -58,6 +58,9 @@ class WallpaperRepository(private val context: Context) {
                     .put("effects", JSONArray(c.effects.map { it.name }))
                     .put("particleStyle", c.particleStyle.name)
                     .put("intensity", c.intensity.toDouble())
+                    .put("scale", c.scale.toDouble())
+                    .put("offsetX", c.offsetX.toDouble())
+                    .put("offsetY", c.offsetY.toDouble())
                     .put("createdAt", c.createdAt),
             )
         }
@@ -82,6 +85,9 @@ class WallpaperRepository(private val context: Context) {
                     particleStyle = runCatching { ParticleStyle.valueOf(o.getString("particleStyle")) }
                         .getOrDefault(ParticleStyle.SPARKLE),
                     intensity = o.optDouble("intensity", 0.6).toFloat(),
+                    scale = o.optDouble("scale", 1.0).toFloat(),
+                    offsetX = o.optDouble("offsetX", 0.0).toFloat(),
+                    offsetY = o.optDouble("offsetY", 0.0).toFloat(),
                     createdAt = o.optLong("createdAt"),
                 )
             }

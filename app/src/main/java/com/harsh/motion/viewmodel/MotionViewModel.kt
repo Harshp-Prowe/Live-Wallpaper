@@ -30,6 +30,9 @@ data class EditorState(
     val particleStyle: ParticleStyle = ParticleStyle.SPARKLE,
     val intensity: Float = 0.6f,
     val name: String = "",
+    val photoScale: Float = 1f,
+    val photoOffsetX: Float = 0f,
+    val photoOffsetY: Float = 0f,
 )
 
 class MotionViewModel(app: Application) : AndroidViewModel(app) {
@@ -66,6 +69,9 @@ class MotionViewModel(app: Application) : AndroidViewModel(app) {
             particleStyle = config.particleStyle,
             intensity = config.intensity,
             name = config.name,
+            photoScale = config.scale,
+            photoOffsetX = config.offsetX,
+            photoOffsetY = config.offsetY,
         )
     }
 
@@ -78,11 +84,21 @@ class MotionViewModel(app: Application) : AndroidViewModel(app) {
             val app = getApplication<Application>()
             val saved = runCatching { withContext(Dispatchers.IO) { PhotoStore.copyToPrivateStorage(app, uri) } }
             saved.onSuccess { localUri ->
-                _editor.value = _editor.value.copy(photoUri = localUri.toString())
+                // Reset any prior crop — it belonged to a different photo.
+                _editor.value = _editor.value.copy(
+                    photoUri = localUri.toString(),
+                    photoScale = 1f,
+                    photoOffsetX = 0f,
+                    photoOffsetY = 0f,
+                )
             }.onFailure {
                 _message.value = "Couldn't use that photo: ${it.message}"
             }
         }
+    }
+
+    fun setPhotoTransform(scale: Float, offsetX: Float, offsetY: Float) {
+        _editor.value = _editor.value.copy(photoScale = scale, photoOffsetX = offsetX, photoOffsetY = offsetY)
     }
 
     fun toggleEffect(effect: EffectType) {
@@ -115,6 +131,9 @@ class MotionViewModel(app: Application) : AndroidViewModel(app) {
             effects = state.effects,
             particleStyle = state.particleStyle,
             intensity = state.intensity,
+            scale = state.photoScale,
+            offsetX = state.photoOffsetX,
+            offsetY = state.photoOffsetY,
         )
     }
 

@@ -52,6 +52,7 @@ fun EditorScreen(
     onParticleStyle: (ParticleStyle) -> Unit,
     onIntensity: (Float) -> Unit,
     onName: (String) -> Unit,
+    onReposition: () -> Unit,
     onSave: () -> Unit,
 ) {
     Scaffold(
@@ -93,8 +94,16 @@ fun EditorScreen(
 
             if (state.photoUri != null) {
                 item {
-                    OutlinedButton(onClick = onPickPhoto, modifier = Modifier.fillMaxWidth()) {
-                        Text("Change photo")
+                    androidx.compose.foundation.layout.Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedButton(onClick = onReposition, modifier = Modifier.weight(1f)) {
+                            Text("Reposition")
+                        }
+                        OutlinedButton(onClick = onPickPhoto, modifier = Modifier.weight(1f)) {
+                            Text("Change photo")
+                        }
                     }
                 }
 
@@ -173,10 +182,9 @@ private fun EffectChipCloud(
 
 @Composable
 private fun LivePreview(state: EditorState, modifier: Modifier) {
-    val context = LocalContext.current
     AndroidView(
         modifier = modifier,
-        factory = { EffectPreviewView(context, buildConfig(state)) },
+        factory = { context -> EffectPreviewView(context, buildConfig(state)) },
         update = { it.updateConfig(buildConfig(state)) },
     )
 }
@@ -188,4 +196,7 @@ private fun buildConfig(state: EditorState) = com.harsh.motion.data.WallpaperCon
     effects = state.effects,
     particleStyle = state.particleStyle,
     intensity = state.intensity,
+    scale = state.photoScale,
+    offsetX = state.photoOffsetX,
+    offsetY = state.photoOffsetY,
 )
