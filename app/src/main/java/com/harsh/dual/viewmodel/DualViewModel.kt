@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -38,7 +39,8 @@ class DualViewModel(app: Application) : AndroidViewModel(app) {
     val themeMode: StateFlow<ThemeMode> =
         repo.themeMode.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), ThemeMode.SYSTEM)
     val onboarded: StateFlow<Boolean?> =
-        repo.onboarded.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+        repo.onboarded.map<Boolean, Boolean?> { it }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val appLock: StateFlow<Boolean> =
         repo.appLock.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
