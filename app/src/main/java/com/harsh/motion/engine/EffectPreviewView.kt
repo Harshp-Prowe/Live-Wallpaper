@@ -78,7 +78,8 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
             BitmapLoader.decodeScaled(context, Uri.parse(config.photoUri), maxOf(width, height))
         }.onSuccess { renderer.setBitmap(it) }
             .onFailure { e ->
-                val msg = "Couldn't load photo: ${e.javaClass.simpleName}: ${e.message}"
+                val msg = "Couldn't load photo (uri scheme=${Uri.parse(config.photoUri).scheme}): " +
+                    "${e.javaClass.simpleName}: ${e.message}"
                 errorText = msg
                 onLoadFailed?.invoke(msg)
             }
