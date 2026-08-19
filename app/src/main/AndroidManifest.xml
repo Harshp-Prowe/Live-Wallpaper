@@ -51,12 +51,20 @@
             </intent-filter>
         </receiver>
 
-        <!-- Cross-profile bridge. The work-profile agent binds to this personal
-             service (via bindDeviceAdminServiceAsUser) to pull queued tasks. -->
-        <service
-            android:name=".engine.WorkBridgeService"
+        <!-- Cross-profile worker. Android forwards the personal profile's DUAL
+             intent to this activity inside the work profile, where it has
+             profile-owner power to install / remove / wipe. -->
+        <activity
+            android:name=".engine.CloneForwardActivity"
+            android:excludeFromRecents="true"
             android:exported="true"
-            android:permission="android.permission.BIND_DEVICE_ADMIN" />
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="com.harsh.dual.action.DUAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
 
     </application>
 </manifest>

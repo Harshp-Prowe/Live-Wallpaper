@@ -5,6 +5,12 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.Message
+import android.os.Messenger
 import android.os.Process
 import android.os.UserHandle
 import com.harsh.dual.data.SpaceState
@@ -13,14 +19,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
- * Work Profile implementation of [VirtualizationEngine]. Real, no-root isolation
- * via Android's managed profile (same mechanism as Island / Shelter).
- *
- * Privileged work (installExistingPackage / uninstall / wipe) must run in the
- * work profile. The personal UI queues tasks in [CloneBridge], launches the
- * work-profile instance of our app (which runs [WorkAgent]), and the agent binds
- * back to pull and execute them. Outcomes are confirmed by re-scanning the work
- * profile through LauncherApps.
+ * Work Profile engine using cross-profile intent forwarding (no root, no
+ * device-owner affiliation). The personal profile fires a forwarded DUAL intent
+ * that Android routes into the work profile's [CloneForwardActivity], which runs
+ * the privileged operation and replies via a Messenger. Outcomes are also
+ * confirmed by re-scanning the work profile through LauncherApps.
  */
 class WorkProfileEngine(context: Context) : VirtualizationEngine {
 
@@ -57,42 +60,72 @@ class WorkProfileEngine(context: Context) : VirtualizationEngine {
         return runCatching { launcher.getActivityList(pkg, user).isNotEmpty() }.getOrDefault(false)
     }
 
-    /** Launch our app inside the work profile so [WorkAgent] runs there. */
-    private fun launchWorkAgent(): Boolean {
+    /** Launch our app in the work profile so [WorkAgent] refreshes the forwarding. */
+    private fun refreshRouting(): Boolean {
         val user = workUser() ?: return false
         val component = runCatching {
             launcher.getActivityList(app.packageName, user).firstOrNull()?.componentName
         }.getOrNull() ?: ComponentName(app.packageName, "com.harsh.dual.MainActivity")
-        return runCatching {
-            launcher.startMainActivity(component, user, null, null)
+        return runCatching { launcher.startMainActivity(component, user, null, null); true }
+            .getOrDefault(false)
+    }
+
+    /** Ensure the personal copy of the forwarder is disabled so the DUAL intent
+     *  is routed across to the work profile instead of resolving locally. */
+    private fun disableLocalForwarder() {
+        runCatching {
+            app.packageManager.setComponentEnabledSetting(
+                ComponentName(app, CloneForwardActivity::class.java),
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+        }
+    }
+
+    /** Fire one forwarded operation into the work profile. */
+    private fun fireOp(op: String, pkg: String?) {
+        CloneBridge.lastReport = null
+        val reply = Messenger(Handler(Looper.getMainLooper()) { msg ->
+            CloneBridge.lastReport = msg.data?.getString(CloneBridge.REPORT_KEY)
             true
-        }.getOrDefault(false)
+        })
+        val intent = Intent(CloneBridge.ACTION).apply {
+            addCategory(Intent.CATEGORY_DEFAULT)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra(CloneBridge.EXTRA_OP, op)
+            pkg?.let { putExtra(CloneBridge.EXTRA_PKG, it) }
+            putExtra(CloneBridge.EXTRA_REPLY, reply)
+        }
+        app.startActivity(intent)
     }
 
     override suspend fun cloneApp(packageName: String): EngineResult = withContext(Dispatchers.IO) {
         if (workUser() == null) return@withContext EngineResult.Failure("Private space is not set up yet.")
         if (isInWorkProfile(packageName)) return@withContext EngineResult.Success
 
-        CloneBridge.lastReport = null
-        CloneBridge.pending = listOf(CloneBridge.Op(CloneBridge.OP_CLONE, packageName))
-        if (!launchWorkAgent()) {
-            return@withContext EngineResult.Failure("Could not open the private space to run the clone.")
-        }
+        refreshRouting()
+        delay(1500)
+        disableLocalForwarder()
+
+        val fired = runCatching { fireOp(CloneBridge.OP_CLONE, packageName) }.isSuccess
+        if (!fired) return@withContext EngineResult.Failure(
+            "Could not route the clone into the private space (forwarding unavailable).",
+        )
+
         if (awaitPresence(packageName, present = true)) EngineResult.Success
         else {
             val report = CloneBridge.lastReport
-            val base = "The clone did not appear."
             EngineResult.Failure(
-                if (report != null) "$base [$report]"
-                else "$base Your private space is running an OLDER version of the helper. Fix: delete the work profile in Settings, then Create Space again with the latest app installed.",
+                "The clone did not appear." + if (report != null) " [$report]"
+                else " No response from the private space. Delete the work profile in Settings and Create Space again.",
             )
         }
     }
 
     override suspend fun removeClone(packageName: String): EngineResult = withContext(Dispatchers.IO) {
         if (!isInWorkProfile(packageName)) return@withContext EngineResult.Success
-        CloneBridge.pending = listOf(CloneBridge.Op(CloneBridge.OP_REMOVE, packageName))
-        if (!launchWorkAgent()) return@withContext EngineResult.Failure("Could not open the private space.")
+        refreshRouting(); delay(1200); disableLocalForwarder()
+        runCatching { fireOp(CloneBridge.OP_REMOVE, packageName) }
         if (awaitPresence(packageName, present = false)) EngineResult.Success
         else EngineResult.Failure("Confirm the removal prompt on your phone to finish removing this clone.")
     }
@@ -109,8 +142,8 @@ class WorkProfileEngine(context: Context) : VirtualizationEngine {
 
     override suspend fun removeSpace(): EngineResult = withContext(Dispatchers.IO) {
         if (workUser() == null) return@withContext EngineResult.Success
-        CloneBridge.pending = listOf(CloneBridge.Op(CloneBridge.OP_WIPE, null))
-        launchWorkAgent()
+        refreshRouting(); delay(1200); disableLocalForwarder()
+        runCatching { fireOp(CloneBridge.OP_WIPE, null) }
         if (awaitNoWorkProfile()) EngineResult.Success
         else EngineResult.Failure("The space is being removed. It may take a few seconds to disappear.")
     }
