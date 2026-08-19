@@ -96,10 +96,17 @@ class EffectRenderer(private var config: WallpaperConfig) {
         if (w <= 0 || h <= 0 || (w == refWidth && h == refHeight)) return
         refWidth = w
         refHeight = h
+        // Warm gold-white glow (not flat white) so it reads as a light
+        // reflection rather than a washed-out haze, with a soft falloff.
         lightShader = RadialGradient(
-            0f, 0f, min(w, h) * 0.6f,
-            intArrayOf(Color.argb(90, 255, 255, 255), Color.argb(0, 255, 255, 255)),
-            null, Shader.TileMode.CLAMP,
+            0f, 0f, min(w, h) * 0.55f,
+            intArrayOf(
+                Color.argb(150, 255, 248, 220),
+                Color.argb(60, 255, 230, 180),
+                Color.argb(0, 255, 220, 160),
+            ),
+            floatArrayOf(0f, 0.5f, 1f),
+            Shader.TileMode.CLAMP,
         )
     }
 
@@ -137,7 +144,10 @@ class EffectRenderer(private var config: WallpaperConfig) {
     /** Advance physics by [dt] seconds. Cheap — safe to call every frame. */
     fun update(dt: Float, tiltX: Float, tiltY: Float) {
         floatPhase += dt
-        if (EffectType.PARTICLES in config.effects) {
+        // Not gated on the PARTICLES effect specifically: a Shake Burst or
+        // Double Tap burst can add particles even when ambient Particles
+        // isn't separately enabled, and those still need to animate/decay.
+        if (particles.isNotEmpty()) {
             for (p in particles) {
                 p.y += p.vy * dt
                 p.x += p.vx * dt + kotlin.math.sin(floatPhase + p.phase) * 4f * dt
@@ -162,11 +172,17 @@ class EffectRenderer(private var config: WallpaperConfig) {
 
     fun onTouchDown(x: Float, y: Float) = addRipple(x, y, 1f)
     fun onDoubleTap(x: Float, y: Float) {
+        // Double Tap gets its own distinct identity — a burst on top of the
+        // ripple — whenever touch effects are on, not only when Particles is
+        // separately selected too.
+        if (EffectType.TOUCH_REACTIVE !in config.effects) return
         addRipple(x, y, 1.6f)
-        if (EffectType.PARTICLES in config.effects) burst(x, y, 8)
+        burst(x, y, 10)
     }
     fun onShake() {
-        if (EffectType.PARTICLES in config.effects) burst(width / 2f, height / 2f, 14)
+        // Was checking PARTICLES instead of SHAKE_BURST, so Shake Effect did
+        // nothing unless Particles was also separately enabled. Fixed.
+        if (EffectType.SHAKE_BURST in config.effects) burst(width / 2f, height / 2f, 16)
     }
 
     private fun addRipple(x: Float, y: Float, scale: Float) {
@@ -255,7 +271,7 @@ class EffectRenderer(private var config: WallpaperConfig) {
             }
         }
 
-        if (EffectType.PARTICLES in config.effects) {
+        if (particles.isNotEmpty()) {
             for (p in particles) drawParticle(canvas, p)
         }
 
@@ -285,8 +301,8 @@ class EffectRenderer(private var config: WallpaperConfig) {
                 canvas.drawCircle(p.x, p.y, p.size, particlePaint)
             }
             ParticleStyle.HEART -> {
-                particlePaint.color = Color.argb(220, 247, 37, 133)
-                drawHeart(canvas, p.x, p.y, p.size)
+                particlePaint.color = Color.argb(230, 247, 37, 133)
+                drawHeart(canvas, p.x, p.y, p.size * 1.5f)
             }
         }
     }
