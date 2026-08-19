@@ -11,14 +11,17 @@ import com.harsh.motion.data.ParticleStyle
 import com.harsh.motion.data.WallpaperConfig
 import com.harsh.motion.data.WallpaperRepository
 import com.harsh.motion.data.WallpaperTemplate
+import com.harsh.motion.engine.PhotoStore
 import com.harsh.motion.ui.theme.ThemeMode
 import com.harsh.motion.wallpaper.MotionWallpaperService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 data class EditorState(
@@ -67,14 +70,19 @@ class MotionViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setPhoto(uri: Uri) {
-        // The system Photo Picker grants persistent read access automatically;
-        // this call is a defensive no-op fallback for older picker paths.
-        runCatching {
-            getApplication<Application>().contentResolver.takePersistableUriPermission(
-                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            )
+        // Photo Picker URIs are only reliably readable right at pick time, so
+        // copy the photo into our own private storage immediately — every
+        // later read (preview, wallpaper service, app restart) then reads a
+        // plain file we own, with no URI-permission edge cases.
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val saved = runCatching { withContext(Dispatchers.IO) { PhotoStore.copyToPrivateStorage(app, uri) } }
+            saved.onSuccess { localUri ->
+                _editor.value = _editor.value.copy(photoUri = localUri.toString())
+            }.onFailure {
+                _message.value = "Couldn't use that photo: ${it.message}"
+            }
         }
-        _editor.value = _editor.value.copy(photoUri = uri.toString())
     }
 
     fun toggleEffect(effect: EffectType) {
