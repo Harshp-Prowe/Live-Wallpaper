@@ -28,6 +28,10 @@ class MotionWallpaperService : WallpaperService() {
 
     override fun onCreateEngine(): Engine = MotionEngine()
 
+    companion object {
+        private const val FRAME_INTERVAL_MS = 33L
+    }
+
     private inner class MotionEngine : Engine() {
 
         private val handler = Handler(Looper.getMainLooper())
@@ -134,10 +138,6 @@ class MotionWallpaperService : WallpaperService() {
             visible = false
             sensor.stop()
             handler.removeCallbacks(frameRunnable)
-        }
-
-        companion object {
-            private const val FRAME_INTERVAL_MS = 33L
         }
     }
 }
