@@ -11,6 +11,8 @@ import android.view.MotionEvent
 import android.view.Surface
 import android.view.SurfaceHolder
 import com.harsh.motion.data.WallpaperConfig
+import com.harsh.motion.data.needsShakeSensor
+import com.harsh.motion.data.needsTiltSensor
 import com.harsh.motion.data.WallpaperRepository
 import com.harsh.motion.engine.BitmapLoader
 import com.harsh.motion.engine.EffectRenderer
@@ -124,6 +126,22 @@ class MotionWallpaperService : WallpaperService() {
             }
         }
 
+        /**
+         * Powers only the sensors the active effects read. SHAKE_BURST is not in
+         * the default effect set, so the previous hardcoded `withShake = true`
+         * kept a fused gyro+accelerometer sensor running permanently for a
+         * feature that was switched off — and a config using neither tilt nor
+         * shake now powers no motion sensor at all.
+         */
+        private fun startSensorsForConfig() {
+            if (!visible) return
+            val effects = activeConfig?.effects ?: return
+            sensor.start(
+                withTilt = effects.needsTiltSensor,
+                withShake = effects.needsShakeSensor,
+            )
+        }
+
         private fun frameSkipForDisplay(): Int {
             val hz = runCatching {
                 val dm = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
@@ -139,11 +157,16 @@ class MotionWallpaperService : WallpaperService() {
                 renderer?.release()
                 renderer = null
                 loadedPhotoUri = null
+                sensor.stop()
                 return
             }
             val existing = renderer
             if (existing == null) renderer = EffectRenderer(config) else existing.updateConfig(config)
             applySizeAndPhoto()
+            // The effect set decides which sensors are needed, so an edit can
+            // change the answer while the wallpaper is already running.
+            sensor.stop()
+            startSensorsForConfig()
         }
 
         private fun applySizeAndPhoto(forceReload: Boolean = false) {
@@ -188,7 +211,7 @@ class MotionWallpaperService : WallpaperService() {
             this.visible = visible
             if (visible) {
                 lastFrameTime = 0L
-                sensor.start(withShake = true)
+                startSensorsForConfig()
                 choreographer.postFrameCallback(frameCallback)
             } else {
                 sensor.stop()

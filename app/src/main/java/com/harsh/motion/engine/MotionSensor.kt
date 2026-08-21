@@ -11,9 +11,9 @@ import android.hardware.SensorManager
  * sensor, cheaper than combining accelerometer + magnetometer manually).
  *
  * Battery discipline: the listener is registered only between [start] and
- * [stop] — callers must stop it whenever the wallpaper/preview is not visible.
- * SENSOR_DELAY_GAME balances smooth tilt response against power draw; the
- * fastest rate is deliberately avoided.
+ * [stop] — callers must stop it whenever the wallpaper/preview is not visible —
+ * and [start] takes each sensor separately so a config that uses neither tilt
+ * nor shake powers no sensor at all.
  */
 class MotionSensor(context: Context) {
 
@@ -58,13 +58,23 @@ class MotionSensor(context: Context) {
     private var shakeSensor: Sensor? = null
     private var listening = false
 
-    fun start(withShake: Boolean) {
+    /**
+     * Registers only what the caller asks for. Both sensors below are fused
+     * (rotation vector = gyro + accelerometer + magnetometer; linear
+     * acceleration = gyro + accelerometer), so each one costs real battery for
+     * as long as it is registered, regardless of whether anything reads it.
+     * Asking for a sensor no active effect uses is pure drain.
+     */
+    fun start(withTilt: Boolean, withShake: Boolean) {
         if (listening) return
+        if (!withTilt && !withShake) return
         listening = true
-        rotationSensor?.let { manager.registerListener(listener, it, SensorManager.SENSOR_DELAY_GAME) }
+        if (withTilt) {
+            rotationSensor?.let { manager.registerListener(listener, it, TILT_SAMPLING_US) }
+        }
         if (withShake) {
             shakeSensor = manager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
-            shakeSensor?.let { manager.registerListener(listener, it, SensorManager.SENSOR_DELAY_NORMAL) }
+            shakeSensor?.let { manager.registerListener(listener, it, SHAKE_SAMPLING_US) }
         }
     }
 
@@ -72,5 +82,17 @@ class MotionSensor(context: Context) {
         if (!listening) return
         listening = false
         manager.unregisterListener(listener)
+    }
+
+    private companion object {
+        // 30Hz. The renderer eases toward the reading with a ~167ms time
+        // constant (see TILT_FOLLOW_RATE), so sampling faster than this cannot
+        // change what is drawn — it only adds CPU wake-ups. The previous
+        // SENSOR_DELAY_GAME was 50Hz.
+        const val TILT_SAMPLING_US = 33_000
+
+        // Shake only needs to notice a sharp jolt, and it is rate-limited to
+        // one burst per 1.2s anyway.
+        const val SHAKE_SAMPLING_US = 60_000
     }
 }

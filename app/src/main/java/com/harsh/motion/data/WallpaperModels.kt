@@ -49,6 +49,23 @@ enum class EffectType(val label: String, val description: String) {
     ),
 }
 
+/**
+ * Which motion sensors a set of effects actually needs.
+ *
+ * Both of these are *fused* sensors: the rotation vector keeps the gyroscope,
+ * accelerometer and magnetometer powered, and linear acceleration keeps the gyro
+ * and accelerometer powered. Registering either one costs the same battery
+ * whether or not anything on screen uses the values, so a wallpaper must only
+ * ask for what its own effects read.
+ */
+val Set<EffectType>.needsTiltSensor: Boolean
+    get() = EffectType.TILT_PARALLAX in this ||
+        EffectType.DYNAMIC_LIGHT in this ||
+        EffectType.AURORA_GLOW in this
+
+val Set<EffectType>.needsShakeSensor: Boolean
+    get() = EffectType.SHAKE_BURST in this
+
 enum class ParticleStyle(val label: String) {
     SPARKLE("Sparkle"),
     HEART("Hearts"),

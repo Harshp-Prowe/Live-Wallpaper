@@ -11,14 +11,17 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import com.harsh.motion.data.WallpaperConfig
+import com.harsh.motion.data.needsShakeSensor
+import com.harsh.motion.data.needsTiltSensor
 import kotlin.math.floor
 
 /**
  * In-app editor preview. Uses the exact same [EffectRenderer] as the live
  * wallpaper so what the user sees while editing is what they get once applied.
  *
- * Battery: the render loop and sensor both start in [onAttachedToWindow] and
- * stop in [onDetachedFromWindow] — nothing runs while the editor isn't visible.
+ * Battery: the render loop and sensors run only while this view is actually
+ * visible on screen (see [onVisibilityAggregated]), and only the sensors the
+ * chosen effects read are powered at all.
  */
 @SuppressLint("ViewConstructor", "ClickableViewAccessibility")
 class EffectPreviewView(context: Context, private var config: WallpaperConfig) : View(context) {
@@ -89,7 +92,13 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
 
     fun updateConfig(newConfig: WallpaperConfig) {
         val photoChanged = newConfig.photoUri != config.photoUri
+        val sensorsChanged = newConfig.effects.needsTiltSensor != config.effects.needsTiltSensor ||
+            newConfig.effects.needsShakeSensor != config.effects.needsShakeSensor
         config = newConfig
+        if (sensorsChanged && running) {
+            sensor.stop()
+            startSensorsForConfig()
+        }
         renderer.updateConfig(newConfig)
         // Re-decoding from disk on every recomposition (e.g. during a live
         // pinch/drag gesture, which recomposes many times per second) would be
@@ -125,21 +134,50 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
         }
     }
 
+    /**
+     * Gated on *aggregate* visibility, not attachment. A View stays attached
+     * while its Activity is merely stopped, so keying off onDetachedFromWindow
+     * left the render loop posted and two fused motion sensors registered the
+     * whole time the app sat in the background.
+     */
+    override fun onVisibilityAggregated(isVisible: Boolean) {
+        super.onVisibilityAggregated(isVisible)
+        if (isVisible) resumeRendering() else pauseRendering()
+    }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        running = true
-        lastFrameTime = 0L
-        val hz = display?.refreshRate ?: 60f
-        frameSkip = if (hz > 0f) maxOf(1, floor(hz / 60f).toInt()) else 1
-        sensor.start(withShake = true)
-        choreographer.postFrameCallback(frameCallback)
+        if (isShown) resumeRendering()
     }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
+        pauseRendering()
+    }
+
+    private fun resumeRendering() {
+        if (running) return
+        running = true
+        lastFrameTime = 0L
+        val hz = display?.refreshRate ?: 60f
+        frameSkip = if (hz > 0f) maxOf(1, floor(hz / 60f).toInt()) else 1
+        startSensorsForConfig()
+        choreographer.postFrameCallback(frameCallback)
+    }
+
+    private fun pauseRendering() {
+        if (!running) return
         running = false
         sensor.stop()
         choreographer.removeFrameCallback(frameCallback)
+    }
+
+    /** Only the sensors the chosen effects actually read — see [MotionSensor.start]. */
+    private fun startSensorsForConfig() {
+        sensor.start(
+            withTilt = config.effects.needsTiltSensor,
+            withShake = config.effects.needsShakeSensor,
+        )
     }
 
 }
