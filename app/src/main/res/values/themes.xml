@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Compose drives the real theme; this only styles the launch window. -->
-    <style name="Theme.MotionByHarsh" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+      Compose drives the real theme; this styles only the launch window. It is
+      dark and brand-coloured on purpose: the previous Material.Light parent
+      flashed a white screen before the first Compose frame, which reads as
+      cheap on a dark app.
+    -->
+    <style name="Theme.HarshFlow" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/brand_ink</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
 </resources>

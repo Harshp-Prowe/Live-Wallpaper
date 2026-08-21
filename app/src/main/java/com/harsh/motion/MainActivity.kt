@@ -7,7 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -73,8 +72,15 @@ private fun MotionRoot() {
                 message?.let { snackbar.showSnackbar(it); vm.consumeMessage() }
             }
 
-            Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
-                Box(Modifier.padding(padding)) {
+            // This outer Scaffold exists only to host the snackbar. Its inset
+            // padding is deliberately ignored: every screen has its own Scaffold
+            // that handles insets, and applying them here too pushed all content
+            // down by the status bar height twice.
+            Scaffold(
+                snackbarHost = { SnackbarHost(snackbar) },
+                containerColor = MaterialTheme.colorScheme.background,
+            ) { _ ->
+                Box {
                     NavHost(navController = navController, startDestination = "home") {
                         composable("home") {
                             HomeScreen(
@@ -131,6 +137,9 @@ private fun MotionRoot() {
                                 themeMode = themeMode,
                                 onBack = { navController.popBackStack() },
                                 onThemeChange = { vm.setTheme(it) },
+                                onOpenWallpaperPicker = {
+                                    setWallpaperLauncher.launch(vm.buildSetWallpaperIntent())
+                                },
                             )
                         }
                     }

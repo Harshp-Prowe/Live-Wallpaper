@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches Brand.Ink in ui/theme/Brand.kt — keep the two in step. -->
+    <color name="brand_ink">#FF090B11</color>
+</resources>

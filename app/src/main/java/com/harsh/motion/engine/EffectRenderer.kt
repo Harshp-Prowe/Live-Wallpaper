@@ -7,6 +7,8 @@ import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
 import android.graphics.Shader
 import com.harsh.motion.data.EffectType
@@ -85,8 +87,35 @@ class EffectRenderer(private var config: WallpaperConfig) {
     private var vignettePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var vignetteShader: RadialGradient? = null
 
+    // Aurora: a few big soft colour lights that drift independently. Built once
+    // per reference size; SCREEN-blended so they read as light falling on the
+    // photo rather than paint sitting on top of it.
+    private val auroraPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.SCREEN)
+    }
+    private var auroraShaders: List<RadialGradient> = emptyList()
+    private val auroraMatrix = Matrix()
+
+    // Liquid wave: a reusable vertex grid for drawBitmapMesh. Allocated once per
+    // bitmap and refilled in place each frame, so the effect costs no
+    // per-frame allocation.
+    private var meshVerts: FloatArray? = null
+    private var meshBitmapWidth = 0
+    private var meshBitmapHeight = 0
+
     private var floatPhase = 0f
     private var homeOffsetX = 0f // -1..1, from launcher swipe (onOffsetsChanged)
+
+    // Touch interaction. The aliases promised Drag Interaction, Swipe Motion,
+    // Press & Hold and Zoom on Touch, but only the ripple was ever implemented.
+    // These drive both: the photo eases toward wherever the finger is (drag /
+    // swipe) and eases into a zoom while it stays held (press & hold).
+    private var touching = false
+    private var touchX = 0f
+    private var touchY = 0f
+    private var touchPullX = 0f // current eased pull, in -1..1 of the screen
+    private var touchPullY = 0f
+    private var holdZoom = 0f // 0 = released, 1 = fully held
 
     private data class Particle(var x: Float, var y: Float, var vx: Float, var vy: Float, var size: Float, var phase: Float)
     private data class Ripple(var x: Float, var y: Float, var radius: Float, var alpha: Int, var maxRadius: Float)
@@ -169,6 +198,22 @@ class EffectRenderer(private var config: WallpaperConfig) {
             floatArrayOf(0f, 0.45f, 1f),
             Shader.TileMode.CLAMP,
         )
+        // Blue / violet / magenta — the app logo's own monogram gradient, so the
+        // wallpaper emits the same light the interface is built from. Each is a
+        // full soft radial falloff to transparent, so overlapping them mixes
+        // into the gradient-mesh look rather than showing hard edges.
+        val auroraRadius = min(w, h) * 0.75f
+        auroraShaders = listOf(
+            intArrayOf(Color.argb(200, 74, 155, 232), Color.argb(90, 40, 110, 200), Color.argb(0, 20, 70, 160)),
+            intArrayOf(Color.argb(200, 155, 107, 239), Color.argb(90, 120, 70, 210), Color.argb(0, 80, 40, 170)),
+            intArrayOf(Color.argb(200, 208, 107, 224), Color.argb(90, 175, 70, 200), Color.argb(0, 130, 40, 160)),
+        ).map { colors ->
+            RadialGradient(
+                0f, 0f, auroraRadius,
+                colors, floatArrayOf(0f, 0.5f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+        }
     }
 
     fun setHomeOffset(x: Float) { homeOffsetX = x }
@@ -205,8 +250,43 @@ class EffectRenderer(private var config: WallpaperConfig) {
     }
 
     /** Advance physics by [dt] seconds. Cheap — safe to call every frame. */
-    fun update(dt: Float, tiltX: Float, tiltY: Float) {
+    fun update(dt: Float) {
         floatPhase += dt
+
+        // Ease toward the sensor reading instead of snapping to it. Raw
+        // accelerometer values jitter with every small hand tremor, and feeding
+        // them straight into position is what made tilt motion look nervous.
+        // This is a frame-rate-independent exponential approach, so the feel is
+        // identical at 30, 60 or 120fps.
+        val follow = 1f - kotlin.math.exp(-dt * TILT_FOLLOW_RATE)
+        smoothedTiltX += (targetTiltX - smoothedTiltX) * follow
+        smoothedTiltY += (targetTiltY - smoothedTiltY) * follow
+
+        // Touch pull and press-and-hold zoom, both eased the same way so a drag
+        // glides with the finger and springs back on release instead of snapping.
+        val touchActive = touching && EffectType.TOUCH_REACTIVE in config.effects
+        val wantPullX = if (touchActive && width > 0) (touchX / width - 0.5f) * 2f else 0f
+        val wantPullY = if (touchActive && height > 0) (touchY / height - 0.5f) * 2f else 0f
+        val touchFollow = 1f - kotlin.math.exp(-dt * TOUCH_FOLLOW_RATE)
+        touchPullX += (wantPullX - touchPullX) * touchFollow
+        touchPullY += (wantPullY - touchPullY) * touchFollow
+        holdZoom += ((if (touchActive) 1f else 0f) - holdZoom) * touchFollow
+
+        // Particles shove away from the finger, so touching the wallpaper feels
+        // like it displaces something rather than only painting a ripple.
+        if (touchActive && particles.isNotEmpty()) {
+            val reach = min(width, height) * 0.28f
+            for (p in particles) {
+                val ox = p.x - touchX
+                val oy = p.y - touchY
+                val dist = kotlin.math.hypot(ox, oy)
+                if (dist in 0.01f..reach) {
+                    val push = (1f - dist / reach) * 220f * dt
+                    p.x += ox / dist * push
+                    p.y += oy / dist * push
+                }
+            }
+        }
         // Not gated on the PARTICLES effect specifically: a Shake Burst or
         // Double Tap burst can add particles even when ambient Particles
         // isn't separately enabled, and those still need to animate/decay.
@@ -233,7 +313,24 @@ class EffectRenderer(private var config: WallpaperConfig) {
         }
     }
 
-    fun onTouchDown(x: Float, y: Float) = addRipple(x, y, 1f)
+    fun onTouchDown(x: Float, y: Float) {
+        touching = true
+        touchX = x
+        touchY = y
+        addRipple(x, y, 1f)
+    }
+
+    /** Finger moved while down — drives the drag/swipe follow. */
+    fun onTouchMove(x: Float, y: Float) {
+        touching = true
+        touchX = x
+        touchY = y
+    }
+
+    /** Finger lifted — the pull and hold-zoom ease back to rest. */
+    fun onTouchUp() {
+        touching = false
+    }
     fun onDoubleTap(x: Float, y: Float) {
         // Double Tap gets its own distinct identity — a burst on top of the
         // ripple — whenever touch effects are on, not only when Particles is
@@ -276,8 +373,8 @@ class EffectRenderer(private var config: WallpaperConfig) {
         var dy = 0f
         var breathe = 1f
         if (EffectType.TILT_PARALLAX in config.effects) {
-            dx += lastTiltX * 70f * intensity
-            dy += lastTiltY * 50f * intensity
+            dx += smoothedTiltX * 70f * intensity
+            dy += smoothedTiltY * 50f * intensity
         }
         dx += homeOffsetX * 60f * intensity
         if (EffectType.FLOATING in config.effects) {
@@ -288,6 +385,20 @@ class EffectRenderer(private var config: WallpaperConfig) {
             dy += (kotlin.math.cos(floatPhase * 0.5f) * 26f + kotlin.math.cos(floatPhase * 0.31f) * 12f) * intensity
             breathe += kotlin.math.sin(floatPhase * 0.5f) * 0.06f * intensity
         }
+        if (EffectType.CINEMATIC_ZOOM in config.effects) {
+            // A smoothstep-eased triangle wave, so the zoom slows to a stop at
+            // each end and reverses without a visible kink — the difference
+            // between "cinematic" and "sliding back and forth".
+            val cycle = kotlin.math.abs((floatPhase * 0.035f) % 2f - 1f)
+            val eased = cycle * cycle * (3f - 2f * cycle)
+            breathe += eased * 0.18f * intensity
+            dx += kotlin.math.sin(floatPhase * 0.045f) * refWidth * 0.06f * intensity
+            dy += kotlin.math.cos(floatPhase * 0.037f) * refHeight * 0.06f * intensity
+        }
+        // Drag/swipe follow and press-and-hold zoom.
+        dx += touchPullX * min(width, height) * 0.06f * intensity
+        dy += touchPullY * min(width, height) * 0.06f * intensity
+        breathe += holdZoom * 0.10f * intensity
 
         canvas.drawColor(Color.BLACK)
 
@@ -317,8 +428,32 @@ class EffectRenderer(private var config: WallpaperConfig) {
         canvas.translate(width / 2f + dx, height / 2f + dy)
         canvas.scale(fgScale, fgScale)
         canvas.translate(-bmp.width / 2f, -bmp.height / 2f)
-        canvas.drawBitmap(bmp, 0f, 0f, bitmapPaint)
+        if (EffectType.LIQUID_WAVE in config.effects) {
+            drawLiquidMesh(canvas, bmp, intensity)
+        } else {
+            canvas.drawBitmap(bmp, 0f, 0f, bitmapPaint)
+        }
         canvas.restore()
+
+        if (EffectType.AURORA_GLOW in config.effects && auroraShaders.isNotEmpty()) {
+            // Each light drifts on its own slow Lissajous path and breathes at
+            // its own rate, so the blobs keep re-mixing instead of moving as a
+            // rigid group. Nudged by tilt too, so the colour responds to the phone.
+            auroraShaders.forEachIndexed { index, shader ->
+                val phase = floatPhase * (0.075f + index * 0.023f) + index * 2.1f
+                val pulse = 1f + kotlin.math.sin(floatPhase * 0.31f + index) * 0.24f
+                auroraMatrix.reset()
+                auroraMatrix.postScale(pulse, pulse)
+                auroraMatrix.postTranslate(
+                    width / 2f + kotlin.math.sin(phase) * width * 0.42f + smoothedTiltX * width * 0.12f,
+                    height / 2f + kotlin.math.cos(phase * 0.83f) * height * 0.34f + smoothedTiltY * height * 0.12f,
+                )
+                shader.setLocalMatrix(auroraMatrix)
+                auroraPaint.shader = shader
+                auroraPaint.alpha = (110f + 90f * intensity).toInt().coerceIn(40, 235)
+                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), auroraPaint)
+            }
+        }
 
         if (EffectType.DYNAMIC_LIGHT in config.effects) {
             lightShader?.let { shader ->
@@ -332,8 +467,8 @@ class EffectRenderer(private var config: WallpaperConfig) {
                 shaderMatrix.reset()
                 shaderMatrix.postScale(pulse, pulse)
                 shaderMatrix.postTranslate(
-                    width / 2f + lastTiltX * refWidth * 0.4f + driftX,
-                    height / 2f + lastTiltY * refHeight * 0.4f + driftY,
+                    width / 2f + smoothedTiltX * refWidth * 0.4f + driftX,
+                    height / 2f + smoothedTiltY * refHeight * 0.4f + driftY,
                 )
                 shader.setLocalMatrix(shaderMatrix)
                 lightPaint.shader = shader
@@ -384,6 +519,41 @@ class EffectRenderer(private var config: WallpaperConfig) {
         }
     }
 
+    /**
+     * Draws the photo through a warped vertex grid, giving a slow liquid ripple.
+     * Two crossed sine waves per axis at different frequencies keep it from
+     * reading as a regular grid pulse. Vertices are in bitmap pixel space, so
+     * the caller's existing translate/scale still applies unchanged.
+     */
+    private fun drawLiquidMesh(canvas: Canvas, bmp: Bitmap, intensity: Float) {
+        val vertexCount = (MESH_COLS + 1) * (MESH_ROWS + 1) * 2
+        var verts = meshVerts
+        if (verts == null || verts.size != vertexCount ||
+            meshBitmapWidth != bmp.width || meshBitmapHeight != bmp.height
+        ) {
+            verts = FloatArray(vertexCount)
+            meshVerts = verts
+            meshBitmapWidth = bmp.width
+            meshBitmapHeight = bmp.height
+        }
+
+        // Amplitude scales with the photo, so the ripple looks the same on any
+        // resolution rather than vanishing on large images.
+        val amp = min(bmp.width, bmp.height) * 0.018f * intensity
+        var i = 0
+        for (row in 0..MESH_ROWS) {
+            val v = row / MESH_ROWS.toFloat()
+            val y = v * bmp.height
+            for (col in 0..MESH_COLS) {
+                val u = col / MESH_COLS.toFloat()
+                val x = u * bmp.width
+                verts[i++] = x + kotlin.math.sin(floatPhase * 1.1f + v * 7.5f + u * 2.3f) * amp
+                verts[i++] = y + kotlin.math.cos(floatPhase * 0.9f + u * 6.5f + v * 1.7f) * amp
+            }
+        }
+        canvas.drawBitmapMesh(bmp, MESH_COLS, MESH_ROWS, verts, 0, null, 0, bitmapPaint)
+    }
+
     private fun drawParticle(canvas: Canvas, p: Particle) {
         when (config.particleStyle) {
             ParticleStyle.SPARKLE -> {
@@ -425,8 +595,23 @@ class EffectRenderer(private var config: WallpaperConfig) {
     }
 
     // Tilt is read from MotionSensor by the caller each frame via these setters,
-    // avoiding a hard dependency on the sensor class from the renderer.
-    private var lastTiltX = 0f
-    private var lastTiltY = 0f
-    fun setTilt(x: Float, y: Float) { lastTiltX = x; lastTiltY = y }
+    // avoiding a hard dependency on the sensor class from the renderer. The raw
+    // reading is only a target — [update] eases toward it (see TILT_FOLLOW_RATE).
+    private var targetTiltX = 0f
+    private var targetTiltY = 0f
+    private var smoothedTiltX = 0f
+    private var smoothedTiltY = 0f
+    fun setTilt(x: Float, y: Float) { targetTiltX = x; targetTiltY = y }
+
+    private companion object {
+        // Higher follows the sensor more tightly; lower glides more. ~6/s keeps
+        // the response immediate to a real tilt while filtering hand tremor.
+        const val TILT_FOLLOW_RATE = 6f
+        // How fast the photo eases toward, and springs back from, a touch.
+        const val TOUCH_FOLLOW_RATE = 7f
+        // Liquid wave grid. Denser looks smoother; this is fine to draw every
+        // frame because the vertex array is reused rather than reallocated.
+        const val MESH_COLS = 16
+        const val MESH_ROWS = 24
+    }
 }

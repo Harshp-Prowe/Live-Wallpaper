@@ -19,12 +19,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
 data class EditorState(
+    // Non-null when editing an already-saved wallpaper: saving then updates that
+    // entry in place instead of minting a new id, which previously left a
+    // duplicate behind on every edit.
+    val editingId: String? = null,
     val photoUri: String? = null,
     // A single effect (esp. tilt-only) reads as "nothing is happening" until the
     // phone is physically tilted. Defaulting to a combo that's alive on its own
@@ -36,6 +41,8 @@ data class EditorState(
         EffectType.DYNAMIC_LIGHT,
         EffectType.TILT_PARALLAX,
         EffectType.TOUCH_REACTIVE,
+        EffectType.CINEMATIC_ZOOM,
+        EffectType.AURORA_GLOW,
     ),
     val particleStyle: ParticleStyle = ParticleStyle.SPARKLE,
     val intensity: Float = 0.75f,
@@ -60,6 +67,23 @@ class MotionViewModel(app: Application) : AndroidViewModel(app) {
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
+    init {
+        // Safe to run at startup: the editor is empty, so every file that no
+        // saved wallpaper references really is abandoned.
+        pruneUnreferencedPhotos()
+    }
+
+    /** Drops private photo copies no saved wallpaper points at any more. See
+     *  [PhotoStore.pruneUnreferenced] for why leaving them behind broke
+     *  wallpaper changing device-wide. */
+    private fun pruneUnreferencedPhotos() = viewModelScope.launch {
+        val app = getApplication<Application>()
+        val referenced = repo.configs.first().map { it.photoUri }
+        withContext(Dispatchers.IO) {
+            PhotoStore.pruneUnreferenced(app, referenced)
+        }
+    }
+
     fun startFromTemplate(template: WallpaperTemplate) {
         _editor.value = EditorState(
             effects = template.effects,
@@ -74,6 +98,7 @@ class MotionViewModel(app: Application) : AndroidViewModel(app) {
 
     fun editExisting(config: WallpaperConfig) {
         _editor.value = EditorState(
+            editingId = config.id,
             photoUri = config.photoUri,
             effects = config.effects,
             particleStyle = config.particleStyle,
@@ -130,12 +155,12 @@ class MotionViewModel(app: Application) : AndroidViewModel(app) {
         _editor.value = _editor.value.copy(name = name)
     }
 
-    fun currentConfigOrNull(existingId: String? = null): WallpaperConfig? {
+    fun currentConfigOrNull(): WallpaperConfig? {
         val state = _editor.value
         val photo = state.photoUri ?: return null
         if (state.effects.isEmpty()) return null
         return WallpaperConfig(
-            id = existingId ?: UUID.randomUUID().toString(),
+            id = state.editingId ?: UUID.randomUUID().toString(),
             name = state.name.ifBlank { "My Wallpaper" },
             photoUri = photo,
             effects = state.effects,
@@ -147,15 +172,23 @@ class MotionViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
-    /** Saves the current editor state and marks it active; caller then launches
-     *  [buildSetWallpaperIntent] to show Android's own confirmation screen. */
-    suspend fun saveAndActivate(existingId: String? = null): WallpaperConfig? {
-        val config = currentConfigOrNull(existingId) ?: run {
+    /** Saves the current editor state and marks it active. When this app's
+     *  wallpaper isn't applied yet the caller launches [buildSetWallpaperIntent]
+     *  to show Android's own confirmation screen; when it already is, the
+     *  running engine picks the change up on its own. */
+    suspend fun saveAndActivate(): WallpaperConfig? {
+        val config = currentConfigOrNull() ?: run {
             _message.value = "Choose a photo and at least one effect first."
             return null
         }
         repo.save(config)
         repo.setActive(config.id)
+        // Keep editing the same entry, so a second save updates it rather than
+        // piling up another copy.
+        _editor.value = _editor.value.copy(editingId = config.id)
+        // Clears the copies left by photos picked and then replaced during this
+        // editing session; the one just saved is referenced, so it survives.
+        pruneUnreferencedPhotos()
         if (isThisWallpaperActive()) {
             _message.value = "Wallpaper updated — your changes are already live."
         }
@@ -176,7 +209,12 @@ class MotionViewModel(app: Application) : AndroidViewModel(app) {
     fun activate(config: WallpaperConfig) = viewModelScope.launch { repo.setActive(config.id) }
 
     fun delete(config: WallpaperConfig) {
-        viewModelScope.launch { repo.delete(config.id) }
+        viewModelScope.launch {
+            repo.delete(config.id)
+            // Reads the list back rather than assuming, so a photo another
+            // saved wallpaper still uses is never deleted out from under it.
+            pruneUnreferencedPhotos()
+        }
     }
 
     fun setTheme(mode: ThemeMode) = viewModelScope.launch { repo.setThemeMode(mode) }

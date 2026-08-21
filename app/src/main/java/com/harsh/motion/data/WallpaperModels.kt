@@ -35,6 +35,18 @@ enum class EffectType(val label: String, val description: String) {
         "Shake Burst",
         "Shake your phone for a burst of particles — covers Shake Effect.",
     ),
+    CINEMATIC_ZOOM(
+        "Cinematic Zoom",
+        "A slow, continuously eased zoom and drift across the photo — alive on its own, with no tilt or touch needed.",
+    ),
+    AURORA_GLOW(
+        "Aurora Glow",
+        "Large, soft colour lights drifting over the photo and blended like real light, for a dreamy gradient look.",
+    ),
+    LIQUID_WAVE(
+        "Liquid Wave",
+        "The photo itself warps in a slow liquid ripple.",
+    ),
 }
 
 enum class ParticleStyle(val label: String) {
@@ -54,6 +66,8 @@ data class WallpaperConfig(
         EffectType.DYNAMIC_LIGHT,
         EffectType.TILT_PARALLAX,
         EffectType.TOUCH_REACTIVE,
+        EffectType.CINEMATIC_ZOOM,
+        EffectType.AURORA_GLOW,
     ),
     val particleStyle: ParticleStyle = ParticleStyle.SPARKLE,
     val intensity: Float = 0.75f,
@@ -126,6 +140,52 @@ object Templates {
             setOf(EffectType.FLOATING, EffectType.TOUCH_REACTIVE, EffectType.PARTICLES),
             ParticleStyle.HEART,
             0xFFEE9CA7L to 0xFFFFDDE1L,
+        ),
+        WallpaperTemplate(
+            "aurora_dream",
+            "Aurora Dream",
+            "Soft colour lights drifting over the photo with slow float and light orbs.",
+            setOf(EffectType.AURORA_GLOW, EffectType.FLOATING, EffectType.PARTICLES),
+            ParticleStyle.BOKEH,
+            0xFF00C9A7L to 0xFF845EC2L,
+        ),
+        WallpaperTemplate(
+            "cinematic_drift",
+            "Cinematic Drift",
+            "A slow film-like zoom across the photo with parallax depth and a light sweep.",
+            setOf(EffectType.CINEMATIC_ZOOM, EffectType.TILT_PARALLAX, EffectType.DYNAMIC_LIGHT),
+            ParticleStyle.BOKEH,
+            0xFF141E30L to 0xFF243B55L,
+        ),
+        WallpaperTemplate(
+            "liquid_glass",
+            "Liquid Glass",
+            "The photo ripples like water, with glassy touch ripples and a moving sheen.",
+            setOf(EffectType.LIQUID_WAVE, EffectType.TOUCH_REACTIVE, EffectType.DYNAMIC_LIGHT),
+            ParticleStyle.SPARKLE,
+            0xFF2E3192L to 0xFF1BFFFFL,
+        ),
+        WallpaperTemplate(
+            "neon_pulse",
+            "Neon Pulse",
+            "Aurora colour over a liquid ripple, reacting to every touch.",
+            setOf(EffectType.AURORA_GLOW, EffectType.LIQUID_WAVE, EffectType.TOUCH_REACTIVE),
+            ParticleStyle.SPARKLE,
+            0xFFFF0099L to 0xFF493240L,
+        ),
+        WallpaperTemplate(
+            "living_portrait",
+            "Living Portrait",
+            "Everything on: cinematic zoom, aurora light, parallax and touch — the full showcase.",
+            setOf(
+                EffectType.CINEMATIC_ZOOM,
+                EffectType.AURORA_GLOW,
+                EffectType.TILT_PARALLAX,
+                EffectType.TOUCH_REACTIVE,
+                EffectType.PARTICLES,
+            ),
+            ParticleStyle.BOKEH,
+            0xFF232526L to 0xFFFF6B35L,
         ),
     )
 }

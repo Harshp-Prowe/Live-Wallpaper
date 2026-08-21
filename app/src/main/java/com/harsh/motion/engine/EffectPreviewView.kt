@@ -6,8 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
+import android.view.Choreographer
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
@@ -25,7 +24,7 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
 
     private val renderer = EffectRenderer(config)
     private val sensor = MotionSensor(context)
-    private val handler = Handler(Looper.getMainLooper())
+    private val choreographer = Choreographer.getInstance()
     private var lastFrameTime = 0L
     private var running = false
     private var errorText: String? = null
@@ -52,21 +51,31 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
         }
     })
 
-    private val frameRunnable = object : Runnable {
-        override fun run() {
-            val now = System.nanoTime()
-            val dt = if (lastFrameTime == 0L) 0f else (now - lastFrameTime) / 1_000_000_000f
-            lastFrameTime = now
+    // Vsync-aligned, matching the live wallpaper exactly, so the editor preview
+    // is a faithful representation of the real thing rather than a slightly
+    // different-feeling approximation.
+    private val frameCallback = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            if (!running) return
+            val dt = if (lastFrameTime == 0L) 0f else (frameTimeNanos - lastFrameTime) / 1_000_000_000f
+            lastFrameTime = frameTimeNanos
             renderer.setTilt(sensor.tiltX, sensor.tiltY)
-            renderer.update(dt.coerceIn(0f, 0.1f), sensor.tiltX, sensor.tiltY)
+            renderer.update(dt.coerceIn(0f, 0.1f))
             invalidate()
-            if (running) handler.postDelayed(this, FRAME_INTERVAL_MS)
+            choreographer.postFrameCallback(this)
         }
     }
 
     init {
         sensor.onShake = { renderer.onShake() }
-        setOnTouchListener { _, event -> gestures.onTouchEvent(event); true }
+        setOnTouchListener { _, event ->
+            gestures.onTouchEvent(event)
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> renderer.onTouchMove(event.x, event.y)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> renderer.onTouchUp()
+            }
+            true
+        }
     }
 
     fun updateConfig(newConfig: WallpaperConfig) {
@@ -112,19 +121,14 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
         running = true
         lastFrameTime = 0L
         sensor.start(withShake = true)
-        handler.post(frameRunnable)
+        choreographer.postFrameCallback(frameCallback)
     }
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         running = false
         sensor.stop()
-        handler.removeCallbacks(frameRunnable)
+        choreographer.removeFrameCallback(frameCallback)
     }
 
-    companion object {
-        // ~30fps: smooth enough for a wallpaper preview while halving the work
-        // (and battery draw) of a naive 60fps loop.
-        private const val FRAME_INTERVAL_MS = 33L
-    }
 }

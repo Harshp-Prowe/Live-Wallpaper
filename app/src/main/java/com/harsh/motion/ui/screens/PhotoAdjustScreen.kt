@@ -17,7 +17,6 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.RestartAlt
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -28,6 +27,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
@@ -45,6 +46,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.harsh.motion.engine.BitmapLoader
+import com.harsh.motion.ui.theme.AuroraButton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.max
@@ -71,12 +73,17 @@ fun PhotoAdjustScreen(
     onConfirm: (scale: Float, offsetX: Float, offsetY: Float) -> Unit,
 ) {
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Position your photo") },
+                title = { Text("Position your photo", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, contentDescription = "Back") }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                ),
             )
         },
     ) { padding ->
@@ -170,7 +177,8 @@ fun PhotoAdjustScreen(
                     Icon(Icons.Rounded.RestartAlt, contentDescription = "Reset")
                 }
 
-                Button(
+                AuroraButton(
+                    text = "Use this position",
                     onClick = {
                         val (maxX, maxY) = maxPan(boxSizePx.x, boxSizePx.y, bmp, scale)
                         val fx = if (maxX > 0f) (offsetPx.x / maxX).coerceIn(-1f, 1f) else 0f
@@ -178,7 +186,8 @@ fun PhotoAdjustScreen(
                         onConfirm(scale, fx, fy)
                     },
                     modifier = Modifier.weight(1f),
-                ) { Text("Use this position") }
+                    shape = RoundedCornerShape(16.dp),
+                )
             }
         }
     }

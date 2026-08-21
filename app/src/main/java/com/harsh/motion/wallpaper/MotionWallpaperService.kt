@@ -1,9 +1,8 @@
 package com.harsh.motion.wallpaper
 
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
 import android.service.wallpaper.WallpaperService
+import android.view.Choreographer
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.SurfaceHolder
@@ -35,13 +34,8 @@ class MotionWallpaperService : WallpaperService() {
 
     override fun onCreateEngine(): Engine = MotionEngine()
 
-    companion object {
-        private const val FRAME_INTERVAL_MS = 33L
-    }
-
     private inner class MotionEngine : Engine() {
 
-        private val handler = Handler(Looper.getMainLooper())
         private val sensor = MotionSensor(this@MotionWallpaperService)
         private var renderer: EffectRenderer? = null
         private var lastFrameTime = 0L
@@ -61,19 +55,23 @@ class MotionWallpaperService : WallpaperService() {
             },
         )
 
-        private val frameRunnable = object : Runnable {
-            override fun run() {
+        // Driven by Choreographer rather than a fixed 33ms Handler post: the old
+        // loop drifted against the display's refresh, so frames were repeatedly
+        // shown twice or skipped and even a perfectly cheap effect looked
+        // stuttery. This lands one frame per vsync instead.
+        private val choreographer = Choreographer.getInstance()
+        private val frameCallback = object : Choreographer.FrameCallback {
+            override fun doFrame(frameTimeNanos: Long) {
                 if (!visible) return
-                val now = System.nanoTime()
-                val dt = if (lastFrameTime == 0L) 0f else (now - lastFrameTime) / 1_000_000_000f
-                lastFrameTime = now
+                val dt = if (lastFrameTime == 0L) 0f else (frameTimeNanos - lastFrameTime) / 1_000_000_000f
+                lastFrameTime = frameTimeNanos
                 val r = renderer
                 if (r != null) {
                     r.setTilt(sensor.tiltX, sensor.tiltY)
-                    r.update(dt.coerceIn(0f, 0.1f), sensor.tiltX, sensor.tiltY)
+                    r.update(dt.coerceIn(0f, 0.1f))
                     drawFrame(r)
                 }
-                handler.postDelayed(this, FRAME_INTERVAL_MS)
+                choreographer.postFrameCallback(this)
             }
         }
 
@@ -157,10 +155,10 @@ class MotionWallpaperService : WallpaperService() {
             if (visible) {
                 lastFrameTime = 0L
                 sensor.start(withShake = true)
-                handler.post(frameRunnable)
+                choreographer.postFrameCallback(frameCallback)
             } else {
                 sensor.stop()
-                handler.removeCallbacks(frameRunnable)
+                choreographer.removeFrameCallback(frameCallback)
             }
         }
 
@@ -174,6 +172,13 @@ class MotionWallpaperService : WallpaperService() {
 
         override fun onTouchEvent(event: MotionEvent) {
             gestures.onTouchEvent(event)
+            // GestureDetector alone only reports discrete taps, so drag and
+            // press-and-hold need the raw stream.
+            val r = renderer ?: return
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> r.onTouchMove(event.x, event.y)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> r.onTouchUp()
+            }
         }
 
         private fun drawFrame(r: EffectRenderer) {
@@ -193,14 +198,14 @@ class MotionWallpaperService : WallpaperService() {
             surfaceWidth = 0
             surfaceHeight = 0
             sensor.stop()
-            handler.removeCallbacks(frameRunnable)
+            choreographer.removeFrameCallback(frameCallback)
         }
 
         override fun onDestroy() {
             super.onDestroy()
             visible = false
             sensor.stop()
-            handler.removeCallbacks(frameRunnable)
+            choreographer.removeFrameCallback(frameCallback)
             engineScope.cancel()
             // Replaced by another wallpaper (a gallery photo, say) — drop the
             // decoded photo instead of leaving it held in this process.
