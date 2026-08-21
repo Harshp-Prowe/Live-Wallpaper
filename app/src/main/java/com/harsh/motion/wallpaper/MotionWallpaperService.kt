@@ -1,10 +1,14 @@
 package com.harsh.motion.wallpaper
 
+import android.content.Context
+import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.service.wallpaper.WallpaperService
 import android.view.Choreographer
+import android.view.Display
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.SurfaceHolder
 import com.harsh.motion.data.WallpaperConfig
 import com.harsh.motion.data.WallpaperRepository
@@ -20,6 +24,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.floor
 
 /**
  * The real live wallpaper. Renders the user's chosen photo with the selected
@@ -33,6 +38,7 @@ import kotlinx.coroutines.withContext
 class MotionWallpaperService : WallpaperService() {
 
     override fun onCreateEngine(): Engine = MotionEngine()
+
 
     private inner class MotionEngine : Engine() {
 
@@ -60,9 +66,28 @@ class MotionWallpaperService : WallpaperService() {
         // shown twice or skipped and even a perfectly cheap effect looked
         // stuttery. This lands one frame per vsync instead.
         private val choreographer = Choreographer.getInstance()
+        private var hardwareCanvasUnavailable = false
+        // Draw on every Nth vsync. Deriving this from the panel's own rate keeps
+        // the result an exact divisor of it; an elapsed-time cutoff instead
+        // beats against vsync, so a 16.67ms "60fps" threshold on a 144Hz panel
+        // actually lands on every 3rd frame = 48fps, worse than it was aiming
+        // for. floor() keeps every common panel at or above 60: 60->60, 90->90,
+        // 120->60, 144->72.
+        private var frameSkip = 1
+        private var vsyncTicks = 0
         private val frameCallback = object : Choreographer.FrameCallback {
             override fun doFrame(frameTimeNanos: Long) {
                 if (!visible) return
+                // Re-post first so a skipped vsync still keeps the loop alive.
+                choreographer.postFrameCallback(this)
+
+                // Capped, because redrawing a wallpaper at the full 144Hz is
+                // heat and battery for motion nobody perceives. Every animation
+                // here advances by elapsed dt, so dropping the sampling rate
+                // changes how often motion is drawn, never its speed or shape.
+                if (++vsyncTicks < frameSkip) return
+                vsyncTicks = 0
+
                 val dt = if (lastFrameTime == 0L) 0f else (frameTimeNanos - lastFrameTime) / 1_000_000_000f
                 lastFrameTime = frameTimeNanos
                 val r = renderer
@@ -71,7 +96,6 @@ class MotionWallpaperService : WallpaperService() {
                     r.update(dt.coerceIn(0f, 0.1f))
                     drawFrame(r)
                 }
-                choreographer.postFrameCallback(this)
             }
         }
 
@@ -86,6 +110,7 @@ class MotionWallpaperService : WallpaperService() {
             super.onCreate(surfaceHolder)
             setTouchEventsEnabled(true)
             sensor.onShake = { renderer?.onShake() }
+            frameSkip = frameSkipForDisplay()
 
             // Observed, not read once: while this wallpaper is already applied,
             // saving an edit in the app must take effect immediately. Reading
@@ -97,6 +122,15 @@ class MotionWallpaperService : WallpaperService() {
                     .distinctUntilChanged()
                     .collect { applyConfig(it) }
             }
+        }
+
+        private fun frameSkipForDisplay(): Int {
+            val hz = runCatching {
+                val dm = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+                dm.getDisplay(Display.DEFAULT_DISPLAY).refreshRate
+            }.getOrDefault(60f)
+            if (hz <= 0f) return 1
+            return maxOf(1, floor(hz / 60f).toInt())
         }
 
         private fun applyConfig(config: WallpaperConfig?) {
@@ -181,7 +215,40 @@ class MotionWallpaperService : WallpaperService() {
             }
         }
 
+        /**
+         * Renders on the GPU wherever possible.
+         *
+         * [SurfaceHolder.lockCanvas] hands back a *software* canvas, so every
+         * full-screen shader pass — aurora, glow, sheen, vignette — was being
+         * composited by the CPU on the main thread. The editor preview is an
+         * ordinary View, so its onDraw is hardware-accelerated and the identical
+         * effects cost a fraction as much there; that mismatch is why the
+         * wallpaper felt heavy while the editor felt fine on the same phone.
+         * [Surface.lockHardwareCanvas] puts both on the same GPU path.
+         */
         private fun drawFrame(r: EffectRenderer) {
+            val surface = surfaceHolder.surface
+            if (!surface.isValid) return
+            if (!hardwareCanvasUnavailable && drawHardware(surface, r)) return
+            drawSoftware(r)
+        }
+
+        private fun drawHardware(surface: Surface, r: EffectRenderer): Boolean {
+            var canvas: android.graphics.Canvas? = null
+            return try {
+                canvas = surface.lockHardwareCanvas()
+                if (canvas == null) false else { r.draw(canvas); true }
+            } catch (t: Throwable) {
+                // A few OEM builds refuse a hardware canvas on the wallpaper
+                // surface. Fall back permanently rather than retrying per frame.
+                hardwareCanvasUnavailable = true
+                false
+            } finally {
+                canvas?.let { runCatching { surface.unlockCanvasAndPost(it) } }
+            }
+        }
+
+        private fun drawSoftware(r: EffectRenderer) {
             val holder = surfaceHolder
             var canvas: android.graphics.Canvas? = null
             try {

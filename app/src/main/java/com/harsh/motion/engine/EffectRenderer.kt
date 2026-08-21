@@ -64,7 +64,10 @@ class EffectRenderer(private var config: WallpaperConfig) {
         Shader.TileMode.CLAMP,
     )
     private val particlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    // Built once in normalised -1..1 space, then positioned per particle by
+    // canvas transform. See [buildUnitHeart].
     private val heartPath = Path()
+    private var heartPathBuilt = false
     private val shaderMatrix = Matrix()
     private var lightShader: RadialGradient? = null
 
@@ -95,6 +98,9 @@ class EffectRenderer(private var config: WallpaperConfig) {
     }
     private var auroraShaders: List<RadialGradient> = emptyList()
     private val auroraMatrix = Matrix()
+    // Kept so the draw can bound each light to its own extent (see draw()).
+    private var auroraRadius = 0f
+    private var lightRadius = 0f
 
     // Liquid wave: a reusable vertex grid for drawBitmapMesh. Allocated once per
     // bitmap and refilled in place each frame, so the effect costs no
@@ -188,8 +194,9 @@ class EffectRenderer(private var config: WallpaperConfig) {
         refHeight = h
         // Warm gold-white glow (not flat white) so it reads as a light
         // reflection rather than a washed-out haze, with a soft falloff.
+        lightRadius = min(w, h) * 0.65f
         lightShader = RadialGradient(
-            0f, 0f, min(w, h) * 0.65f,
+            0f, 0f, lightRadius,
             intArrayOf(
                 Color.argb(210, 255, 250, 225),
                 Color.argb(110, 255, 232, 180),
@@ -202,7 +209,7 @@ class EffectRenderer(private var config: WallpaperConfig) {
         // wallpaper emits the same light the interface is built from. Each is a
         // full soft radial falloff to transparent, so overlapping them mixes
         // into the gradient-mesh look rather than showing hard edges.
-        val auroraRadius = min(w, h) * 0.75f
+        auroraRadius = min(w, h) * 0.75f
         auroraShaders = listOf(
             intArrayOf(Color.argb(200, 74, 155, 232), Color.argb(90, 40, 110, 200), Color.argb(0, 20, 70, 160)),
             intArrayOf(Color.argb(200, 155, 107, 239), Color.argb(90, 120, 70, 210), Color.argb(0, 80, 40, 170)),
@@ -442,16 +449,21 @@ class EffectRenderer(private var config: WallpaperConfig) {
             auroraShaders.forEachIndexed { index, shader ->
                 val phase = floatPhase * (0.075f + index * 0.023f) + index * 2.1f
                 val pulse = 1f + kotlin.math.sin(floatPhase * 0.31f + index) * 0.24f
+                val cx = width / 2f + kotlin.math.sin(phase) * width * 0.42f +
+                    smoothedTiltX * width * 0.12f
+                val cy = height / 2f + kotlin.math.cos(phase * 0.83f) * height * 0.34f +
+                    smoothedTiltY * height * 0.12f
                 auroraMatrix.reset()
                 auroraMatrix.postScale(pulse, pulse)
-                auroraMatrix.postTranslate(
-                    width / 2f + kotlin.math.sin(phase) * width * 0.42f + smoothedTiltX * width * 0.12f,
-                    height / 2f + kotlin.math.cos(phase * 0.83f) * height * 0.34f + smoothedTiltY * height * 0.12f,
-                )
+                auroraMatrix.postTranslate(cx, cy)
                 shader.setLocalMatrix(auroraMatrix)
                 auroraPaint.shader = shader
                 auroraPaint.alpha = (110f + 90f * intensity).toInt().coerceIn(40, 235)
-                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), auroraPaint)
+                // A circle bounded to the gradient's own radius, not a
+                // full-screen rect. The gradient is fully transparent past that
+                // radius, so painting the whole screen three times over was
+                // compositing millions of pixels that could not change anything.
+                canvas.drawCircle(cx, cy, auroraRadius * pulse, auroraPaint)
             }
         }
 
@@ -464,20 +476,25 @@ class EffectRenderer(private var config: WallpaperConfig) {
                 // A slow breathing pulse on the glow's own size makes the sweep
                 // read as a living light source rather than a fixed overlay.
                 val pulse = 1f + kotlin.math.sin(floatPhase * 0.35f) * 0.18f
+                val glowX = width / 2f + smoothedTiltX * refWidth * 0.4f + driftX
+                val glowY = height / 2f + smoothedTiltY * refHeight * 0.4f + driftY
                 shaderMatrix.reset()
                 shaderMatrix.postScale(pulse, pulse)
-                shaderMatrix.postTranslate(
-                    width / 2f + smoothedTiltX * refWidth * 0.4f + driftX,
-                    height / 2f + smoothedTiltY * refHeight * 0.4f + driftY,
-                )
+                shaderMatrix.postTranslate(glowX, glowY)
                 shader.setLocalMatrix(shaderMatrix)
                 lightPaint.shader = shader
-                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), lightPaint)
+                // Bounded to the glow's radius, as with the aurora above.
+                canvas.drawCircle(glowX, glowY, lightRadius * pulse, lightPaint)
 
                 // Diagonal specular sheen, swept slowly left-to-right and
                 // wrapping — the moving-highlight look modern glass/metal UI
                 // uses, layered over the static warm glow above.
                 canvas.save()
+                // Clip in unrotated space first: the band below is deliberately
+                // oversized (3x width, 2.2x height) so it still covers the
+                // screen once rotated, which meant rasterising ~6.6 screens of
+                // shader every frame. The clip cuts that to one screen.
+                canvas.clipRect(0f, 0f, width.toFloat(), height.toFloat())
                 canvas.rotate(-18f, width / 2f, height / 2f)
                 val bandHalfWidth = width * 0.16f
                 val period = width * 2.6f
@@ -576,22 +593,89 @@ class EffectRenderer(private var config: WallpaperConfig) {
             }
             ParticleStyle.HEART -> {
                 val twinkle = (kotlin.math.sin(floatPhase * 1.6f + p.phase) * 0.5f + 0.5f)
-                particlePaint.color = Color.argb((50 + twinkle * 40f).toInt(), 255, 90, 150)
-                canvas.drawCircle(p.x, p.y, p.size * 1.8f, particlePaint)
-                particlePaint.color = Color.argb((200 + twinkle * 55f).toInt(), 247, 37, 133)
-                drawHeart(canvas, p.x, p.y, p.size * 1.5f)
+                // A slow tumble plus a fixed per-particle lean. Hearts standing
+                // perfectly upright in a grid is what makes this kind of effect
+                // look like clip art.
+                val lean = kotlin.math.sin(floatPhase * 0.45f + p.phase) * 9f +
+                    (p.phase - 3.14f) * 3.5f
+                // Each heart sits somewhere between a soft rose and the brand
+                // magenta, so a drift of them reads as one family of light
+                // instead of a single flat pink.
+                val mix = kotlin.math.sin(p.phase * 1.7f) * 0.5f + 0.5f
+                val cr = (255 + (208 - 255) * mix).toInt()
+                val cg = (111 + (107 - 111) * mix).toInt()
+                val cb = (168 + (224 - 168) * mix).toInt()
+
+                // Glow follows the silhouette, in a few concentric steps so it
+                // fades out. Drawing a circle behind a heart gave a pink disc
+                // with a heart floating in it; a single low-alpha silhouette
+                // instead gave a hard-edged halo that read as a drop shadow.
+                particlePaint.style = Paint.Style.FILL
+                val glowScale = 0.7f + twinkle * 0.5f
+                for (g in HEART_GLOW_SCALE.indices) {
+                    particlePaint.color = Color.argb(
+                        (HEART_GLOW_ALPHA[g] * glowScale).toInt().coerceIn(0, 255),
+                        cr, cg, cb,
+                    )
+                    drawHeartShape(canvas, p.x, p.y, p.size * HEART_GLOW_SCALE[g], lean)
+                }
+
+                // About a third are drawn as outlines. The mix keeps a dense
+                // drift feeling light rather than a wall of solid shapes.
+                val outlined = ((p.phase * 97f).toInt() % 3) == 0
+                particlePaint.color = Color.argb((185 + twinkle * 60f).toInt(), cr, cg, cb)
+                val half = p.size * 1.05f
+                if (outlined) {
+                    particlePaint.style = Paint.Style.STROKE
+                    // The canvas is scaled by `half` inside drawHeartShape, and
+                    // that scales stroke width too — so set it in unit space.
+                    particlePaint.strokeWidth = (p.size * 0.16f) / half
+                }
+                drawHeartShape(canvas, p.x, p.y, half, lean)
+                // Shared paint: hand it back the way the other styles expect it.
+                particlePaint.style = Paint.Style.FILL
             }
         }
     }
 
-    private fun drawHeart(canvas: Canvas, cx: Float, cy: Float, size: Float) {
-        heartPath.reset()
-        val s = size / 10f
-        heartPath.moveTo(cx, cy + 3 * s)
-        heartPath.cubicTo(cx - 6 * s, cy - 3 * s, cx - 2 * s, cy - 7 * s, cx, cy - 3 * s)
-        heartPath.cubicTo(cx + 2 * s, cy - 7 * s, cx + 6 * s, cy - 3 * s, cx, cy + 3 * s)
-        heartPath.close()
+    /**
+     * Draws the cached unit heart at [cx], [cy] with half-extent [half],
+     * rotated by [rotationDeg]. The path is built once in normalised
+     * coordinates and positioned by canvas transform, so nothing is
+     * re-tessellated per particle per frame and rotation is free.
+     */
+    private fun drawHeartShape(canvas: Canvas, cx: Float, cy: Float, half: Float, rotationDeg: Float) {
+        if (!heartPathBuilt) buildUnitHeart()
+        canvas.save()
+        canvas.translate(cx, cy)
+        canvas.rotate(rotationDeg)
+        canvas.scale(half, half)
         canvas.drawPath(heartPath, particlePaint)
+        canvas.restore()
+    }
+
+    /**
+     * A properly proportioned heart in a -1..1 box: a full cubic per lobe wall
+     * plus a short cusp curve at the top, which is what lets the lobes actually
+     * round over. The previous two-cubic version drove both outer walls from the
+     * same height as the centre cusp, so the lobes stayed deflated and the whole
+     * shape read as a wide pinched blob.
+     *
+     * The cusp depth (-0.70) is tuned for the size these are actually drawn at.
+     * A shallower notch disappears entirely below ~15px and the top reads as a
+     * dome; a deeper one splits the lobes into two separate bumps.
+     */
+    private fun buildUnitHeart() {
+        heartPath.reset()
+        heartPath.moveTo(0f, 1f)                                        // bottom point
+        heartPath.cubicTo(0f, 1f, -1f, 0.278f, -1f, -0.389f)            // left outer wall
+        heartPath.cubicTo(-1f, -0.730f, -0.730f, -1f, -0.389f, -1f)     // left lobe crown
+        heartPath.cubicTo(-0.196f, -1f, -0.020f, -0.920f, 0f, -0.700f)  // into the cusp
+        heartPath.cubicTo(0.020f, -0.920f, 0.196f, -1f, 0.389f, -1f)    // out of the cusp
+        heartPath.cubicTo(0.730f, -1f, 1f, -0.730f, 1f, -0.389f)        // right lobe crown
+        heartPath.cubicTo(1f, 0.278f, 0f, 1f, 0f, 1f)                   // right outer wall
+        heartPath.close()
+        heartPathBuilt = true
     }
 
     // Tilt is read from MotionSensor by the caller each frame via these setters,
@@ -613,5 +697,10 @@ class EffectRenderer(private var config: WallpaperConfig) {
         // frame because the vertex array is reused rather than reallocated.
         const val MESH_COLS = 16
         const val MESH_ROWS = 24
+
+        // Heart glow falloff: concentric silhouettes, widest and faintest first.
+        // Three steps is enough to read as soft light; more just costs fills.
+        val HEART_GLOW_SCALE = floatArrayOf(1.90f, 1.52f, 1.22f)
+        val HEART_GLOW_ALPHA = floatArrayOf(11f, 17f, 23f)
     }
 }

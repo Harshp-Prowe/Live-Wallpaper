@@ -11,6 +11,7 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import com.harsh.motion.data.WallpaperConfig
+import kotlin.math.floor
 
 /**
  * In-app editor preview. Uses the exact same [EffectRenderer] as the live
@@ -25,6 +26,8 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
     private val renderer = EffectRenderer(config)
     private val sensor = MotionSensor(context)
     private val choreographer = Choreographer.getInstance()
+    private var frameSkip = 1
+    private var vsyncTicks = 0
     private var lastFrameTime = 0L
     private var running = false
     private var errorText: String? = null
@@ -57,12 +60,18 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (!running) return
+            choreographer.postFrameCallback(this)
+            // Same vsync-skip cap as the live wallpaper, so the preview is an
+            // honest representation of it rather than running smoother than the
+            // real thing ever will. See MotionWallpaperService for why this
+            // counts vsyncs instead of comparing elapsed time.
+            if (++vsyncTicks < frameSkip) return
+            vsyncTicks = 0
             val dt = if (lastFrameTime == 0L) 0f else (frameTimeNanos - lastFrameTime) / 1_000_000_000f
             lastFrameTime = frameTimeNanos
             renderer.setTilt(sensor.tiltX, sensor.tiltY)
             renderer.update(dt.coerceIn(0f, 0.1f))
             invalidate()
-            choreographer.postFrameCallback(this)
         }
     }
 
@@ -120,6 +129,8 @@ class EffectPreviewView(context: Context, private var config: WallpaperConfig) :
         super.onAttachedToWindow()
         running = true
         lastFrameTime = 0L
+        val hz = display?.refreshRate ?: 60f
+        frameSkip = if (hz > 0f) maxOf(1, floor(hz / 60f).toInt()) else 1
         sensor.start(withShake = true)
         choreographer.postFrameCallback(frameCallback)
     }

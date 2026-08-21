@@ -39,9 +39,38 @@ object BitmapLoader {
         }
 
         val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        return openStream(context, uri).use { BitmapFactory.decodeStream(it, null, opts) }
+        val decoded = openStream(context, uri).use { BitmapFactory.decodeStream(it, null, opts) }
             ?: throw IllegalStateException("Decoder returned no bitmap for this photo")
+        return clampToTextureLimit(decoded)
     }
+
+    /**
+     * inSampleSize only halves, and the loop above stops while the *halved* size
+     * would still be at or above the target — so a 12MP photo can legitimately
+     * decode at its full 4032px. That matters because the wallpaper now renders
+     * on a hardware canvas, and a bitmap larger than the GPU's maximum texture
+     * size is not drawn at all: Android logs "Bitmap too large to be uploaded
+     * into a texture" and silently skips it, which would show as a black
+     * wallpaper with only the effect overlays on top.
+     *
+     * 4096 is the safe ceiling for every GPU on our minSdk (26) and above, and
+     * it is well past the screen resolution these are drawn at, so this cannot
+     * change how any photo that already worked looks.
+     */
+    private fun clampToTextureLimit(bitmap: Bitmap): Bitmap {
+        val longest = maxOf(bitmap.width, bitmap.height)
+        if (longest <= MAX_TEXTURE_PX) return bitmap
+        val factor = MAX_TEXTURE_PX.toFloat() / longest
+        val w = (bitmap.width * factor).toInt().coerceAtLeast(1)
+        val h = (bitmap.height * factor).toInt().coerceAtLeast(1)
+        return runCatching {
+            Bitmap.createScaledBitmap(bitmap, w, h, true).also { scaled ->
+                if (scaled !== bitmap) bitmap.recycle()
+            }
+        }.getOrDefault(bitmap)
+    }
+
+    private const val MAX_TEXTURE_PX = 4096
 
     private fun openStream(context: Context, uri: Uri): InputStream {
         if (uri.scheme == "file") {
