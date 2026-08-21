@@ -6,7 +6,9 @@ package com.harsh.motion.data
  * Follow, Perspective Shift, Depth Layers, Motion Tracking...) describe the same
  * underlying mechanic — device-tilt-driven image movement — so they map to one
  * real engine, [TILT_PARALLAX], rather than being duplicated as fake variants.
- * Same idea for the touch-based and particle-based groups below.
+ * Same idea for the touch-based and particle-based groups below. The editor
+ * offers exactly one toggle per entry here; listing the synonyms as separate
+ * toggles made a single tap appear to select several chips at once.
  */
 enum class EffectType(val label: String, val description: String) {
     TILT_PARALLAX(
@@ -33,56 +35,6 @@ enum class EffectType(val label: String, val description: String) {
         "Shake Burst",
         "Shake your phone for a burst of particles — covers Shake Effect.",
     ),
-}
-
-/**
- * Every interaction name from the product brief, each mapped to the one real
- * [EffectType] engine that actually implements it. Several names describe the
- * same underlying mechanic (e.g. "Tilt Effect" / "Gyroscope Control" /
- * "Perspective Shift" are all tilt-driven image movement), so they share an
- * engine rather than being faked as separate implementations. Selecting any
- * alias toggles its shared engine; all aliases of that engine highlight together.
- */
-data class EffectAlias(val label: String, val effect: EffectType)
-
-object EffectAliases {
-    val all = listOf(
-        EffectAlias("Gyro Motion", EffectType.TILT_PARALLAX),
-        EffectAlias("Tilt Effect", EffectType.TILT_PARALLAX),
-        EffectAlias("3D Parallax", EffectType.TILT_PARALLAX),
-        EffectAlias("Depth Layers", EffectType.TILT_PARALLAX),
-        EffectAlias("Motion Tracking", EffectType.TILT_PARALLAX),
-        EffectAlias("Tilt-to-Move", EffectType.TILT_PARALLAX),
-        EffectAlias("Gyroscope Control", EffectType.TILT_PARALLAX),
-        EffectAlias("Accelerometer Motion", EffectType.TILT_PARALLAX),
-        EffectAlias("Perspective Shift", EffectType.TILT_PARALLAX),
-        EffectAlias("Parallax Layers", EffectType.TILT_PARALLAX),
-
-        EffectAlias("Floating Photo", EffectType.FLOATING),
-        EffectAlias("Floating Elements", EffectType.FLOATING),
-        EffectAlias("Motion Follow", EffectType.FLOATING),
-        EffectAlias("Elastic Motion", EffectType.FLOATING),
-        EffectAlias("Magnetic Motion", EffectType.FLOATING),
-        EffectAlias("Inertia Motion", EffectType.FLOATING),
-        EffectAlias("Smooth Follow", EffectType.FLOATING),
-        EffectAlias("Ambient Animation", EffectType.FLOATING),
-
-        EffectAlias("Touch Reactive", EffectType.TOUCH_REACTIVE),
-        EffectAlias("Touch Ripple", EffectType.TOUCH_REACTIVE),
-        EffectAlias("Drag Interaction", EffectType.TOUCH_REACTIVE),
-        EffectAlias("Swipe Motion", EffectType.TOUCH_REACTIVE),
-        EffectAlias("Zoom on Touch", EffectType.TOUCH_REACTIVE),
-        EffectAlias("Press & Hold", EffectType.TOUCH_REACTIVE),
-        EffectAlias("Double Tap", EffectType.TOUCH_REACTIVE),
-
-        EffectAlias("Interactive Particles", EffectType.PARTICLES),
-
-        EffectAlias("Dynamic Lighting", EffectType.DYNAMIC_LIGHT),
-        EffectAlias("Light Reflection", EffectType.DYNAMIC_LIGHT),
-        EffectAlias("Depth Blur", EffectType.DYNAMIC_LIGHT),
-
-        EffectAlias("Shake Effect", EffectType.SHAKE_BURST),
-    )
 }
 
 enum class ParticleStyle(val label: String) {

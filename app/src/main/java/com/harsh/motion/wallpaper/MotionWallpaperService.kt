@@ -12,8 +12,15 @@ import com.harsh.motion.data.WallpaperRepository
 import com.harsh.motion.engine.BitmapLoader
 import com.harsh.motion.engine.EffectRenderer
 import com.harsh.motion.engine.MotionSensor
-import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The real live wallpaper. Renders the user's chosen photo with the selected
@@ -71,28 +78,45 @@ class MotionWallpaperService : WallpaperService() {
         }
 
         private var activeConfig: WallpaperConfig? = null
+        private val engineScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
+        private var surfaceWidth = 0
+        private var surfaceHeight = 0
+        private var loadedPhotoUri: String? = null
+        private var loadJob: Job? = null
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
             setTouchEventsEnabled(true)
-            val config = loadActiveConfig()
-            activeConfig = config
-            if (config != null) {
-                renderer = EffectRenderer(config)
-                sensor.onShake = { renderer?.onShake() }
+            sensor.onShake = { renderer?.onShake() }
+
+            // Observed, not read once: while this wallpaper is already applied,
+            // saving an edit in the app must take effect immediately. Reading
+            // the active config only in onCreate meant the engine kept serving
+            // the stale one until the app's data was cleared or reinstalled.
+            val repo = WallpaperRepository(this@MotionWallpaperService)
+            engineScope.launch {
+                combine(repo.activeConfigId, repo.configs) { id, all -> all.firstOrNull { it.id == id } }
+                    .distinctUntilChanged()
+                    .collect { applyConfig(it) }
             }
         }
 
-        private fun loadActiveConfig(): WallpaperConfig? = runBlocking {
-            val repo = WallpaperRepository(this@MotionWallpaperService)
-            val id = repo.activeConfigId.firstOrNull() ?: return@runBlocking null
-            repo.configs.firstOrNull()?.firstOrNull { it.id == id }
+        private fun applyConfig(config: WallpaperConfig?) {
+            activeConfig = config
+            if (config == null) {
+                renderer?.release()
+                renderer = null
+                loadedPhotoUri = null
+                return
+            }
+            val existing = renderer
+            if (existing == null) renderer = EffectRenderer(config) else existing.updateConfig(config)
+            applySizeAndPhoto()
         }
 
-        override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-            super.onSurfaceChanged(holder, format, width, height)
+        private fun applySizeAndPhoto(forceReload: Boolean = false) {
             val r = renderer ?: return
-            val uriString = activeConfig?.photoUri ?: return
+            if (surfaceWidth == 0 || surfaceHeight == 0) return
 
             // The wallpaper surface is often wider than one screen (Android
             // gives room to pan between home-screen pages). Scale/position
@@ -100,14 +124,32 @@ class MotionWallpaperService : WallpaperService() {
             // size, or the photo ends up badly over-zoomed and mis-anchored.
             val dm = resources.displayMetrics
             r.setReferenceSize(dm.widthPixels, dm.heightPixels)
-            r.setSize(width, height)
+            r.setSize(surfaceWidth, surfaceHeight)
 
-            runCatching {
-                BitmapLoader.decodeScaled(
-                    this@MotionWallpaperService, Uri.parse(uriString),
-                    maxOf(dm.widthPixels, dm.heightPixels),
-                )
-            }.onSuccess { r.setBitmap(it) }
+            val uriString = activeConfig?.photoUri ?: return
+            if (!forceReload && uriString == loadedPhotoUri) return
+
+            loadJob?.cancel()
+            loadJob = engineScope.launch {
+                val bitmap = withContext(Dispatchers.IO) {
+                    runCatching {
+                        BitmapLoader.decodeScaled(
+                            this@MotionWallpaperService, Uri.parse(uriString),
+                            maxOf(dm.widthPixels, dm.heightPixels),
+                        )
+                    }.getOrNull()
+                } ?: return@launch
+                if (renderer !== r) return@launch
+                loadedPhotoUri = uriString
+                r.setBitmap(bitmap)
+            }
+        }
+
+        override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+            super.onSurfaceChanged(holder, format, width, height)
+            surfaceWidth = width
+            surfaceHeight = height
+            applySizeAndPhoto(forceReload = true)
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
@@ -148,8 +190,23 @@ class MotionWallpaperService : WallpaperService() {
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
             super.onSurfaceDestroyed(holder)
             visible = false
+            surfaceWidth = 0
+            surfaceHeight = 0
             sensor.stop()
             handler.removeCallbacks(frameRunnable)
+        }
+
+        override fun onDestroy() {
+            super.onDestroy()
+            visible = false
+            sensor.stop()
+            handler.removeCallbacks(frameRunnable)
+            engineScope.cancel()
+            // Replaced by another wallpaper (a gallery photo, say) — drop the
+            // decoded photo instead of leaving it held in this process.
+            renderer?.release()
+            renderer = null
+            loadedPhotoUri = null
         }
     }
 }

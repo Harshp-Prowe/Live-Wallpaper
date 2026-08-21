@@ -1,7 +1,7 @@
 # Architecture
 
 ## Overview
-Motion by Harsh is built on Android's official **Live Wallpaper** framework
+HarshFlow is built on Android's official **Live Wallpaper** framework
 (`android.service.wallpaper.WallpaperService`) — a first-party, fully-supported
 mechanism with no OS-level restrictions to work around (unlike app-cloning,
 Live Wallpapers are a standard user-facing feature on every Android device).

@@ -103,7 +103,10 @@ private fun MotionRoot() {
                                 onReposition = { navController.navigate("adjust") },
                                 onSave = {
                                     scope.launch {
-                                        if (vm.saveAndActivate() != null) {
+                                        if (vm.saveAndActivate() == null) return@launch
+                                        if (vm.isThisWallpaperActive()) {
+                                            navController.popBackStack("home", inclusive = false)
+                                        } else {
                                             setWallpaperLauncher.launch(vm.buildSetWallpaperIntent())
                                         }
                                     }

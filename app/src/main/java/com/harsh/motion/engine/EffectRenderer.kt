@@ -95,11 +95,19 @@ class EffectRenderer(private var config: WallpaperConfig) {
     private val ripples = mutableListOf<Ripple>()
 
     fun updateConfig(newConfig: WallpaperConfig) {
+        val previous = config
         config = newConfig
-        seedParticles()
+        // Only the effect set and intensity change the particle field. Reseeding
+        // on every call restarted the animation on unrelated edits (a slider
+        // drag recomposes many times a second), which read as stutter.
+        if (previous.effects != newConfig.effects || previous.intensity != newConfig.intensity) {
+            seedParticles()
+        }
     }
 
     fun setBitmap(bmp: Bitmap) {
+        val previousFg = bitmap
+        val previousBg = bgBitmap
         bitmap = bmp
         // A tiny downscaled copy, upscaled back on draw with bilinear filtering,
         // gives a cheap blur-like look for the edge-to-edge background layer —
@@ -109,6 +117,20 @@ class EffectRenderer(private var config: WallpaperConfig) {
             val h = (bmp.height / 10).coerceAtLeast(1)
             Bitmap.createScaledBitmap(bmp, w, h, true)
         }.getOrNull()
+        if (previousFg !== bmp) previousFg?.recycle()
+        if (previousBg !== bgBitmap) previousBg?.recycle()
+    }
+
+    /** Frees the decoded photo. Call when the renderer's surface goes away for
+     *  good, so a swapped-out or replaced wallpaper doesn't keep the bitmaps
+     *  alive in the wallpaper service process. */
+    fun release() {
+        bitmap?.recycle()
+        bgBitmap?.recycle()
+        bitmap = null
+        bgBitmap = null
+        particles.clear()
+        ripples.clear()
     }
 
     fun setSize(w: Int, h: Int) {

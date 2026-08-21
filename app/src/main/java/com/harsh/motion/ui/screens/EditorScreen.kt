@@ -7,12 +7,14 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Photo
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import com.harsh.motion.data.EffectAliases
 import com.harsh.motion.data.EffectType
 import com.harsh.motion.data.ParticleStyle
 import com.harsh.motion.engine.EffectPreviewView
@@ -110,7 +111,7 @@ fun EditorScreen(
                 item { Text("Animation & interaction", style = MaterialTheme.typography.titleMedium) }
                 item {
                     Text(
-                        "Pick any — synonyms of the same motion highlight together.",
+                        "Tap to turn each motion on or off — combine as many as you like.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -169,12 +170,19 @@ private fun EffectChipCloud(
     selectedEffects: Set<EffectType>,
     onToggleEffect: (EffectType) -> Unit,
 ) {
+    // One chip per real engine. Listing every marketing alias as its own chip
+    // meant a single tap lit up all ten synonyms of the same effect, which read
+    // as a selection bug.
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        EffectAliases.all.forEach { alias ->
+        EffectType.values().forEach { effect ->
+            val selected = effect in selectedEffects
             FilterChip(
-                selected = alias.effect in selectedEffects,
-                onClick = { onToggleEffect(alias.effect) },
-                label = { Text(alias.label) },
+                selected = selected,
+                onClick = { onToggleEffect(effect) },
+                label = { Text(effect.label) },
+                leadingIcon = if (selected) {
+                    { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                } else null,
             )
         }
     }

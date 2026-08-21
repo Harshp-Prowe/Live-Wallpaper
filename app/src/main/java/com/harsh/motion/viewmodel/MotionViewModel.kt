@@ -156,7 +156,21 @@ class MotionViewModel(app: Application) : AndroidViewModel(app) {
         }
         repo.save(config)
         repo.setActive(config.id)
+        if (isThisWallpaperActive()) {
+            _message.value = "Wallpaper updated — your changes are already live."
+        }
         return config
+    }
+
+    /** True when this app's live wallpaper is the one currently applied. If so,
+     *  saving is enough — the running engine picks the change up on its own, and
+     *  re-launching Android's picker for an already-active wallpaper is a no-op
+     *  (or an outright dead end) on several older OEM builds. */
+    fun isThisWallpaperActive(): Boolean {
+        val app = getApplication<Application>()
+        val info = WallpaperManager.getInstance(app).wallpaperInfo ?: return false
+        return info.packageName == app.packageName &&
+            info.serviceName == MotionWallpaperService::class.java.name
     }
 
     fun activate(config: WallpaperConfig) = viewModelScope.launch { repo.setActive(config.id) }
